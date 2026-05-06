@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Layout } from "@/components/academy/Layout";
+import { GhostHand } from "@/components/academy/GhostHand";
+import { fingerFor, FINGER_LABEL } from "@/components/academy/fingerMap";
 
 const PASSAGE =
   "The discipline of typing is not measured in speed alone, but in the quiet consistency of every keystroke. A practiced hand moves with intent, never with hurry, and finds rhythm in the steady cadence of thought becoming text.";
@@ -11,7 +13,8 @@ export default function Practice() {
   const [duration, setDuration] = useState(60);
   const [started, setStarted] = useState(false);
   const [timeLeft, setTimeLeft] = useState(60);
-  const [showKeyboard, setShowKeyboard] = useState(false);
+  const [showKeyboard, setShowKeyboard] = useState(true);
+  const [showGhost, setShowGhost] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => setTimeLeft(duration), [duration]);
@@ -48,6 +51,11 @@ export default function Practice() {
 
   const progress = (input.length / PASSAGE.length) * 100;
 
+  const nextChar = PASSAGE[input.length] ?? "";
+  const nextKeyDisplay = nextChar === " " ? "space" : nextChar;
+  const activeFinger = fingerFor(nextChar);
+  const fingerLabel = activeFinger ? FINGER_LABEL[activeFinger] : "—";
+
   return (
     <Layout withFooter={false}>
       <div className="min-h-[calc(100vh-3.5rem)] flex flex-col">
@@ -74,6 +82,10 @@ export default function Practice() {
             </div>
             <div className="flex items-center gap-4">
               <label className="flex items-center gap-2 text-muted-foreground cursor-pointer">
+                <input type="checkbox" checked={showGhost} onChange={(e) => setShowGhost(e.target.checked)} className="accent-primary" />
+                Ghost hand
+              </label>
+              <label className="flex items-center gap-2 text-muted-foreground cursor-pointer">
                 <input type="checkbox" checked={showKeyboard} onChange={(e) => setShowKeyboard(e.target.checked)} className="accent-primary" />
                 Keyboard
               </label>
@@ -85,7 +97,7 @@ export default function Practice() {
         </div>
 
         {/* Focus chamber */}
-        <div className="flex-1 flex items-center justify-center px-6 py-16" onClick={() => inputRef.current?.focus()}>
+        <div className="flex-1 flex items-center justify-center px-6 py-12" onClick={() => inputRef.current?.focus()}>
           <div className="max-w-3xl w-full">
             <input
               ref={inputRef}
@@ -110,6 +122,26 @@ export default function Practice() {
                 );
               })}
             </p>
+
+            {/* Typing Guide — appears once user starts */}
+            {started && !finished && (
+              <div className="mt-10 flex items-stretch gap-4 animate-fade-in">
+                <div className="flex-1 bg-card hairline border rounded-md p-4 flex items-center gap-5">
+                  <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Next</div>
+                  <div className="flex items-center justify-center min-w-[44px] h-11 px-3 rounded border border-accent/40 bg-accent/10 font-mono-typing text-[15px] text-foreground">
+                    {nextKeyDisplay || "·"}
+                  </div>
+                  <div className="h-8 w-px bg-border" />
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Use</div>
+                    <div className="text-[13px] text-foreground mt-0.5">{fingerLabel}</div>
+                  </div>
+                  <div className="ml-auto text-[11px] text-muted-foreground hidden sm:block">
+                    Tip — keep wrists relaxed, return to home row.
+                  </div>
+                </div>
+              </div>
+            )}
 
             {finished && (
               <div className="mt-12 bg-card hairline border rounded-md p-8 shadow-sheet animate-fade-up">
@@ -143,7 +175,25 @@ export default function Practice() {
           </div>
         </div>
 
-        {showKeyboard && <KeyboardVisual />}
+        {/* Ghost hand + Keyboard */}
+        {(showGhost || showKeyboard) && (
+          <div className="container pb-10">
+            <div className="grid md:grid-cols-2 gap-4 max-w-3xl mx-auto">
+              {showGhost && (
+                <div className="bg-card hairline border rounded-md p-5">
+                  <div className="flex justify-between items-center mb-3">
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Ghost hand</div>
+                    <div className="text-[11px] text-muted-foreground">{fingerLabel}</div>
+                  </div>
+                  <div className="h-32">
+                    <GhostHand active={activeFinger} />
+                  </div>
+                </div>
+              )}
+              {showKeyboard && <KeyboardVisual nextKey={nextChar} />}
+            </div>
+          </div>
+        )}
       </div>
     </Layout>
   );
@@ -158,21 +208,40 @@ const Stat = ({ label, value, mono }: { label: string; value: string | number; m
 
 const KEYS = [
   ["Q","W","E","R","T","Y","U","I","O","P"],
-  ["A","S","D","F","G","H","J","K","L"],
-  ["Z","X","C","V","B","N","M"],
+  ["A","S","D","F","G","H","J","K","L",";"],
+  ["Z","X","C","V","B","N","M",",",".","/"],
 ];
-const KeyboardVisual = () => (
-  <div className="container pb-10">
-    <div className="bg-card hairline border rounded-md p-5 max-w-2xl mx-auto">
+const KeyboardVisual = ({ nextKey }: { nextKey: string }) => {
+  const target = (nextKey || "").toUpperCase();
+  const isSpace = nextKey === " ";
+  return (
+    <div className="bg-card hairline border rounded-md p-5">
+      <div className="flex justify-between items-center mb-3">
+        <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Keyboard</div>
+        <div className="text-[11px] text-muted-foreground">{isSpace ? "space" : target || "—"}</div>
+      </div>
       {KEYS.map((row, i) => (
-        <div key={i} className="flex justify-center gap-1.5 mb-1.5" style={{ paddingLeft: i * 12 }}>
-          {row.map((k) => (
-            <div key={k} className="w-9 h-9 rounded border border-border/70 flex items-center justify-center text-[11px] text-muted-foreground">
-              {k}
-            </div>
-          ))}
+        <div key={i} className="flex justify-center gap-1 mb-1" style={{ paddingLeft: i * 10 }}>
+          {row.map((k) => {
+            const on = !isSpace && k === target;
+            return (
+              <div
+                key={k}
+                className={`w-7 h-7 rounded border flex items-center justify-center text-[10px] transition-all ${
+                  on ? "border-accent/60 bg-accent/15 text-foreground" : "border-border/70 text-muted-foreground"
+                }`}
+              >
+                {k}
+              </div>
+            );
+          })}
         </div>
       ))}
+      <div className="flex justify-center pt-1">
+        <div className={`w-[200px] h-6 rounded border text-[10px] flex items-center justify-center transition-all ${
+          isSpace ? "border-accent/60 bg-accent/15 text-foreground" : "border-border/70 text-muted-foreground"
+        }`}>space</div>
+      </div>
     </div>
-  </div>
-);
+  );
+};
