@@ -2,13 +2,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Layout } from "@/components/academy/Layout";
 import { GhostHand } from "@/components/academy/GhostHand";
 import { fingerFor, FINGER_LABEL } from "@/components/academy/fingerMap";
-
-const PASSAGE =
-  "The discipline of typing is not measured in speed alone, but in the quiet consistency of every keystroke. A practiced hand moves with intent, never with hurry, and finds rhythm in the steady cadence of thought becoming text.";
+import { ErrorNote, LoadingLine, SkeletonBlock } from "@/components/academy/States";
+import { useCreateSession, useRandomPassage } from "@/hooks/api";
+import { toast } from "@/hooks/use-toast";
 
 const DURATIONS = [15, 30, 60, 120];
 
 export default function Practice() {
+  const { data: passage, isLoading, isError, refetch, isFetching } = useRandomPassage();
+  const createSession = useCreateSession();
+
+  const text = passage?.text ?? "";
+
   const [input, setInput] = useState("");
   const [duration, setDuration] = useState(60);
   const [started, setStarted] = useState(false);
@@ -16,12 +21,12 @@ export default function Practice() {
   const [showKeyboard, setShowKeyboard] = useState(true);
   const [showGhost, setShowGhost] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
+  const submittedRef = useRef(false);
 
   useEffect(() => setTimeLeft(duration), [duration]);
 
   useEffect(() => {
-    if (!started) return;
-    if (timeLeft <= 0) return;
+    if (!started || timeLeft <= 0) return;
     const t = setInterval(() => setTimeLeft((s) => s - 1), 1000);
     return () => clearInterval(t);
   }, [started, timeLeft]);
@@ -29,29 +34,57 @@ export default function Practice() {
   const finished = started && timeLeft <= 0;
 
   const stats = useMemo(() => {
-    const correct = input.split("").filter((ch, i) => ch === PASSAGE[i]).length;
+    const correct = input.split("").filter((ch, i) => ch === text[i]).length;
     const accuracy = input.length === 0 ? 100 : Math.round((correct / input.length) * 100);
     const elapsed = duration - timeLeft || 1;
     const wpm = Math.round((correct / 5) / (elapsed / 60));
     return { accuracy, wpm: isFinite(wpm) ? wpm : 0, correct };
-  }, [input, timeLeft, duration]);
+  }, [input, timeLeft, duration, text]);
+
+  // Persist completed session to "backend"
+  useEffect(() => {
+    if (!finished || submittedRef.current || !passage) return;
+    submittedRef.current = true;
+    createSession.mutate(
+      {
+        passageId: passage.id,
+        wpm: stats.wpm,
+        accuracy: stats.accuracy,
+        duration,
+        correctChars: stats.correct,
+      },
+      {
+        onSuccess: () => toast({ title: "Session saved", description: `${stats.wpm} WPM · ${stats.accuracy}%` }),
+        onError: (e: any) => toast({ title: "Could not save session", description: e?.message ?? "Network error" }),
+      },
+    );
+  }, [finished, passage, stats, duration, createSession]);
 
   const reset = () => {
     setInput("");
     setStarted(false);
     setTimeLeft(duration);
+    submittedRef.current = false;
+    setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  const newPassage = async () => {
+    submittedRef.current = false;
+    setInput("");
+    setStarted(false);
+    setTimeLeft(duration);
+    await refetch();
     setTimeout(() => inputRef.current?.focus(), 50);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (finished) return;
+    if (finished || !text) return;
     if (!started && e.target.value.length > 0) setStarted(true);
-    if (e.target.value.length <= PASSAGE.length) setInput(e.target.value);
+    if (e.target.value.length <= text.length) setInput(e.target.value);
   };
 
-  const progress = (input.length / PASSAGE.length) * 100;
-
-  const nextChar = PASSAGE[input.length] ?? "";
+  const progress = text ? (input.length / text.length) * 100 : 0;
+  const nextChar = text[input.length] ?? "";
   const nextKeyDisplay = nextChar === " " ? "space" : nextChar;
   const activeFinger = fingerFor(nextChar);
   const fingerLabel = activeFinger ? FINGER_LABEL[activeFinger] : "—";
@@ -61,7 +94,7 @@ export default function Practice() {
       <div className="min-h-[calc(100vh-3.5rem)] flex flex-col">
         {/* Top bar */}
         <div className="border-b border-border/70">
-          <div className="container py-4 flex items-center justify-between text-[12px]">
+          <div className="container py-4 flex items-center justify-between text-[12px] gap-6 flex-wrap">
             <div className="flex items-center gap-8">
               <Stat label="WPM" value={stats.wpm} />
               <Stat label="Accuracy" value={`${stats.accuracy}%`} />
@@ -89,6 +122,9 @@ export default function Practice() {
                 <input type="checkbox" checked={showKeyboard} onChange={(e) => setShowKeyboard(e.target.checked)} className="accent-primary" />
                 Keyboard
               </label>
+              <button onClick={newPassage} className="text-muted-foreground hover:text-foreground transition-colors" disabled={isFetching}>
+                {isFetching ? "Loading…" : "New passage ⤴"}
+              </button>
               <button onClick={reset} className="text-muted-foreground hover:text-foreground transition-colors">
                 Reset ↻
               </button>
@@ -99,83 +135,111 @@ export default function Practice() {
         {/* Focus chamber */}
         <div className="flex-1 flex items-center justify-center px-6 py-12" onClick={() => inputRef.current?.focus()}>
           <div className="max-w-3xl w-full">
-            <input
-              ref={inputRef}
-              autoFocus
-              value={input}
-              onChange={handleChange}
-              className="sr-only"
-              aria-label="Typing input"
-            />
-            <p className="font-mono-typing text-[22px] md:text-[26px] leading-[2] tracking-[-0.005em] select-none">
-              {PASSAGE.split("").map((ch, i) => {
-                const typed = input[i];
-                let cls = "text-muted-foreground/40";
-                if (typed != null) {
-                  cls = typed === ch ? "text-foreground" : "text-destructive/80 underline decoration-destructive/40 underline-offset-4";
-                }
-                const isCurrent = i === input.length;
-                return (
-                  <span key={i} className={`${cls} relative ${isCurrent ? "border-l border-foreground caret -ml-px" : ""}`}>
-                    {ch}
-                  </span>
-                );
-              })}
-            </p>
-
-            {/* Typing Guide — appears once user starts */}
-            {started && !finished && (
-              <div className="mt-10 flex items-stretch gap-4 animate-fade-in">
-                <div className="flex-1 bg-card hairline border rounded-md p-4 flex items-center gap-5">
-                  <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Next</div>
-                  <div className="flex items-center justify-center min-w-[44px] h-11 px-3 rounded border border-accent/40 bg-accent/10 font-mono-typing text-[15px] text-foreground">
-                    {nextKeyDisplay || "·"}
-                  </div>
-                  <div className="h-8 w-px bg-border" />
-                  <div>
-                    <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Use</div>
-                    <div className="text-[13px] text-foreground mt-0.5">{fingerLabel}</div>
-                  </div>
-                  <div className="ml-auto text-[11px] text-muted-foreground hidden sm:block">
-                    Tip — keep wrists relaxed, return to home row.
-                  </div>
-                </div>
+            {isLoading && (
+              <div className="space-y-4">
+                <LoadingLine label="Fetching passage" />
+                <SkeletonBlock className="h-6 w-11/12" />
+                <SkeletonBlock className="h-6 w-10/12" />
+                <SkeletonBlock className="h-6 w-9/12" />
               </div>
             )}
 
-            {finished && (
-              <div className="mt-12 bg-card hairline border rounded-md p-8 shadow-sheet animate-fade-up">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground mb-4">Session complete</div>
-                <div className="grid grid-cols-3 gap-8">
-                  <div>
-                    <div className="font-serif text-4xl">{stats.wpm}</div>
-                    <div className="text-[12px] text-muted-foreground mt-1">Words / min</div>
-                  </div>
-                  <div>
-                    <div className="font-serif text-4xl">{stats.accuracy}%</div>
-                    <div className="text-[12px] text-muted-foreground mt-1">Accuracy</div>
-                  </div>
-                  <div>
-                    <div className="font-serif text-4xl">{stats.correct}</div>
-                    <div className="text-[12px] text-muted-foreground mt-1">Correct chars</div>
-                  </div>
+            {isError && !isLoading && (
+              <ErrorNote message="Failed to load passage from server." onRetry={() => refetch()} />
+            )}
+
+            {!isLoading && !isError && passage && (
+              <>
+                <div className="flex items-center justify-between mb-6 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                  <span>{passage.title}</span>
+                  <span>· {passage.category}</span>
                 </div>
-                <button onClick={reset} className="mt-8 px-4 py-2 rounded bg-primary text-primary-foreground text-[13px]">
-                  Begin again
-                </button>
-              </div>
+                <input
+                  ref={inputRef}
+                  autoFocus
+                  value={input}
+                  onChange={handleChange}
+                  className="sr-only"
+                  aria-label="Typing input"
+                />
+                <p className="font-mono-typing text-[22px] md:text-[26px] leading-[2] tracking-[-0.005em] select-none">
+                  {text.split("").map((ch, i) => {
+                    const typed = input[i];
+                    let cls = "text-muted-foreground/40";
+                    if (typed != null) {
+                      cls = typed === ch ? "text-foreground" : "text-destructive/80 underline decoration-destructive/40 underline-offset-4";
+                    }
+                    const isCurrent = i === input.length;
+                    return (
+                      <span key={i} className={`${cls} relative ${isCurrent ? "border-l border-foreground caret -ml-px" : ""}`}>
+                        {ch}
+                      </span>
+                    );
+                  })}
+                </p>
+
+                {started && !finished && (
+                  <div className="mt-10 flex items-stretch gap-4 animate-fade-in">
+                    <div className="flex-1 bg-card hairline border rounded-md p-4 flex items-center gap-5">
+                      <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Next</div>
+                      <div className="flex items-center justify-center min-w-[44px] h-11 px-3 rounded border border-accent/40 bg-accent/10 font-mono-typing text-[15px] text-foreground">
+                        {nextKeyDisplay || "·"}
+                      </div>
+                      <div className="h-8 w-px bg-border" />
+                      <div>
+                        <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Use</div>
+                        <div className="text-[13px] text-foreground mt-0.5">{fingerLabel}</div>
+                      </div>
+                      <div className="ml-auto text-[11px] text-muted-foreground hidden sm:block">
+                        Tip — keep wrists relaxed, return to home row.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {finished && (
+                  <div className="mt-12 bg-card hairline border rounded-md p-8 shadow-sheet animate-fade-up">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Session complete</div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {createSession.isPending ? "Saving…" : createSession.isError ? "Save failed" : "Saved ✓"}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-8">
+                      <div>
+                        <div className="font-serif text-4xl">{stats.wpm}</div>
+                        <div className="text-[12px] text-muted-foreground mt-1">Words / min</div>
+                      </div>
+                      <div>
+                        <div className="font-serif text-4xl">{stats.accuracy}%</div>
+                        <div className="text-[12px] text-muted-foreground mt-1">Accuracy</div>
+                      </div>
+                      <div>
+                        <div className="font-serif text-4xl">{stats.correct}</div>
+                        <div className="text-[12px] text-muted-foreground mt-1">Correct chars</div>
+                      </div>
+                    </div>
+                    <div className="mt-8 flex gap-3">
+                      <button onClick={reset} className="px-4 py-2 rounded bg-primary text-primary-foreground text-[13px]">
+                        Begin again
+                      </button>
+                      <button onClick={newPassage} className="px-4 py-2 rounded border border-border text-foreground hover:bg-secondary text-[13px]">
+                        New passage
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
 
-        {/* Bottom progress */}
         <div className="container pb-6">
           <div className="h-px w-full bg-border relative overflow-hidden">
             <div className="absolute left-0 top-0 h-full bg-foreground transition-all duration-150" style={{ width: `${progress}%` }} />
           </div>
         </div>
 
-        {/* Ghost hand + Keyboard */}
         {(showGhost || showKeyboard) && (
           <div className="container pb-10">
             <div className="grid md:grid-cols-2 gap-4 max-w-3xl mx-auto">

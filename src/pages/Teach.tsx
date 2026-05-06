@@ -1,23 +1,7 @@
 import { useState } from "react";
 import { Layout } from "@/components/academy/Layout";
-
-const LESSONS = [
-  {
-    title: "Chapter I — Home Row",
-    text: "Begin with the home row: A, S, D, F for the left hand, and J, K, L, ; for the right. Rest your fingers lightly. The keys F and J carry small ridges — your anchors.",
-    keys: ["A", "S", "D", "F", "J", "K", "L"],
-  },
-  {
-    title: "Chapter II — Top Row",
-    text: "Reach upward with intent. Each finger ascends to its assigned key and returns home. Practice slowly; speed will follow accuracy.",
-    keys: ["Q", "W", "E", "R", "U", "I", "O", "P"],
-  },
-  {
-    title: "Chapter III — Bottom Row",
-    text: "The bottom row demands restraint. Curl your fingers gently and strike with the pads, not the tips.",
-    keys: ["Z", "X", "C", "V", "N", "M"],
-  },
-];
+import { ErrorNote, SkeletonBlock } from "@/components/academy/States";
+import { useLessons } from "@/hooks/api";
 
 const ROWS = [
   ["Q","W","E","R","T","Y","U","I","O","P"],
@@ -26,8 +10,35 @@ const ROWS = [
 ];
 
 export default function Teach() {
+  const { data: lessons, isLoading, isError, refetch } = useLessons();
   const [step, setStep] = useState(0);
-  const lesson = LESSONS[step];
+
+  if (isError) {
+    return (
+      <Layout>
+        <div className="container py-12">
+          <ErrorNote message="Failed to load curriculum." onRetry={() => refetch()} />
+        </div>
+      </Layout>
+    );
+  }
+
+  if (isLoading || !lessons) {
+    return (
+      <Layout>
+        <div className="container py-12 space-y-6">
+          <SkeletonBlock className="h-6 w-40" />
+          <SkeletonBlock className="h-10 w-80" />
+          <div className="grid lg:grid-cols-2 gap-12">
+            <SkeletonBlock className="h-64 w-full" />
+            <SkeletonBlock className="h-64 w-full" />
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  const lesson = lessons[Math.min(step, lessons.length - 1)];
   const active = new Set(lesson.keys);
 
   return (
@@ -36,9 +47,8 @@ export default function Teach() {
         <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground mb-3">Teaching mode</div>
         <h1 className="font-serif text-3xl mb-10 tracking-tight">A book for the hands</h1>
 
-        {/* Steps */}
         <div className="flex items-center gap-3 mb-12">
-          {LESSONS.map((_, i) => (
+          {lessons.map((_, i) => (
             <button
               key={i}
               onClick={() => setStep(i)}
@@ -46,11 +56,10 @@ export default function Teach() {
               aria-label={`Step ${i + 1}`}
             />
           ))}
-          <span className="ml-4 text-[12px] text-muted-foreground tabular-nums">{step + 1} / {LESSONS.length}</span>
+          <span className="ml-4 text-[12px] text-muted-foreground tabular-nums">{step + 1} / {lessons.length}</span>
         </div>
 
         <div className="grid lg:grid-cols-2 gap-12 items-start">
-          {/* Left: lesson */}
           <article className="bg-card hairline border rounded-md p-10 shadow-sheet">
             <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground mb-4">{lesson.title.split(" — ")[0]}</div>
             <h2 className="font-serif text-2xl mb-6 leading-snug">{lesson.title.split(" — ")[1]}</h2>
@@ -59,13 +68,13 @@ export default function Teach() {
               <button
                 disabled={step === 0}
                 onClick={() => setStep((s) => Math.max(0, s - 1))}
-                className="text-[13px] text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:hover:text-muted-foreground transition-colors"
+                className="text-[13px] text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
               >
                 ← Previous
               </button>
               <button
-                disabled={step === LESSONS.length - 1}
-                onClick={() => setStep((s) => Math.min(LESSONS.length - 1, s + 1))}
+                disabled={step === lessons.length - 1}
+                onClick={() => setStep((s) => Math.min(lessons.length - 1, s + 1))}
                 className="text-[13px] px-4 py-1.5 rounded bg-primary text-primary-foreground disabled:opacity-30"
               >
                 Continue →
@@ -73,7 +82,6 @@ export default function Teach() {
             </div>
           </article>
 
-          {/* Right: keyboard */}
           <div className="bg-card hairline border rounded-md p-8 shadow-sheet">
             <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground mb-6">Finger map</div>
             <div className="space-y-2">
@@ -85,9 +93,7 @@ export default function Teach() {
                       <div
                         key={k}
                         className={`w-10 h-10 rounded border flex items-center justify-center text-[12px] transition-all ${
-                          on
-                            ? "border-accent/60 bg-accent/10 text-foreground"
-                            : "border-border/70 text-muted-foreground/70"
+                          on ? "border-accent/60 bg-accent/10 text-foreground" : "border-border/70 text-muted-foreground/70"
                         }`}
                       >
                         {k}
