@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { Logo } from "./Logo";
+import { useAuth } from "@/hooks/useAuth";
 
 const links = [
   { to: "/practice", label: "Practice" },
@@ -9,7 +10,9 @@ const links = [
   { to: "/profile", label: "Profile" },
 ];
 
-export const Nav = () => (
+export const Nav = () => {
+  const { user, signOut } = useAuth();
+  return (
   <header className="border-b border-border/70 bg-background/80 backdrop-blur sticky top-0 z-50">
     <div className="container flex h-14 items-center justify-between">
       <Logo />
@@ -31,16 +34,29 @@ export const Nav = () => (
         ))}
       </nav>
       <div className="flex items-center gap-3">
-        <button className="text-[13px] text-muted-foreground hover:text-foreground transition-colors hidden sm:block">
-          Sign in
-        </button>
+        {user ? (
+          <button
+            onClick={signOut}
+            className="text-[13px] text-muted-foreground hover:text-foreground transition-colors hidden sm:block"
+          >
+            Sign out
+          </button>
+        ) : (
+          <NavLink
+            to="/auth"
+            className="text-[13px] text-muted-foreground hover:text-foreground transition-colors hidden sm:block"
+          >
+            Sign in
+          </NavLink>
+        )}
         <NavLink
-          to="/practice"
+          to={user ? "/practice" : "/auth"}
           className="text-[13px] px-3.5 py-1.5 rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
         >
-          Enter Academy
+          {user ? "Enter Academy" : "Get started"}
         </NavLink>
       </div>
     </div>
   </header>
-);
+  );
+};
