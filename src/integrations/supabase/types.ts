@@ -59,6 +59,39 @@ export type Database = {
         }
         Relationships: []
       }
+      sessions: {
+        Row: {
+          accuracy: number
+          correct_chars: number
+          created_at: string
+          duration: number
+          id: string
+          passage_id: string
+          user_id: string
+          wpm: number
+        }
+        Insert: {
+          accuracy: number
+          correct_chars?: number
+          created_at?: string
+          duration: number
+          id?: string
+          passage_id: string
+          user_id: string
+          wpm: number
+        }
+        Update: {
+          accuracy?: number
+          correct_chars?: number
+          created_at?: string
+          duration?: number
+          id?: string
+          passage_id?: string
+          user_id?: string
+          wpm?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
