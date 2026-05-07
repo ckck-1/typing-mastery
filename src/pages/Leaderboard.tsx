@@ -76,9 +76,9 @@ export default function Leaderboard() {
                     <div className={`h-7 w-7 rounded-full flex items-center justify-center text-[11px] ${
                       top ? "bg-accent/15 text-accent-foreground border border-accent/30" : "bg-secondary text-muted-foreground"
                     }`}>
-                      {r.username[0].toUpperCase()}
+                      {(r.username?.[0] ?? "?").toUpperCase()}
                     </div>
-                    <span className="text-[14px] text-foreground">{r.username}</span>
+                    <span className="text-[14px] text-foreground">@{r.username}</span>
                     {r.rank === 1 && <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground ml-2">· Laureate</span>}
                   </div>
                   <div className="col-span-2 text-right tabular-nums text-[14px] text-foreground">{r.wpm}</div>
