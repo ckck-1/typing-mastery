@@ -27,7 +27,7 @@ export const useCreateSession = () => {
     mutationFn: (input: CreateSessionInput) => sessionsService.create(input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["sessions"] });
-      qc.invalidateQueries({ queryKey: ["profile"] });
+      qc.invalidateQueries({ queryKey: ["leaderboard"] });
     },
   });
 };
