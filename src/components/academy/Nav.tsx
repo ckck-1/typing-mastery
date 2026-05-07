@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { Logo } from "./Logo";
+import { useAuth } from "@/hooks/useAuth";
 
 const links = [
   { to: "/practice", label: "Practice" },
@@ -9,7 +10,9 @@ const links = [
   { to: "/profile", label: "Profile" },
 ];
 
-export const Nav = () => (
+export const Nav = () => {
+  const { user, signOut } = useAuth();
+  return (
   <header className="border-b border-border/70 bg-background/80 backdrop-blur sticky top-0 z-50">
     <div className="container flex h-14 items-center justify-between">
       <Logo />
