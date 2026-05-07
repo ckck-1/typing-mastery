@@ -1,6 +1,12 @@
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/mock/db/schema";
+import { request } from "@/mock/transport";
+import { authController } from "../mock/auth/controllers/authControllers";
 
-export type LeaderboardScope = "global" | "weekly" | "monthly" | "friends";
+export type LeaderboardScope =
+  | "global"
+  | "weekly"
+  | "monthly"
+  | "friends";
 
 export type LeaderboardEntry = {
   id: string;
@@ -12,56 +18,90 @@ export type LeaderboardEntry = {
   rank: number;
 };
 
-function sinceIso(days: number): string {
-  return new Date(Date.now() - days * 86_400_000).toISOString();
+function since(days: number) {
+  return Date.now() - days * 86400000;
 }
 
 export const leaderboardService = {
-  async list(scope: LeaderboardScope = "global"): Promise<LeaderboardEntry[]> {
-    let userIds: string[] | null = null;
+  async list(
+    scope: LeaderboardScope = "global"
+  ): Promise<LeaderboardEntry[]> {
+    return request(
+      "GET",
+      "/leaderboard",
+      () => {
+        let sessions = db.table("sessions");
 
-    if (scope === "friends") {
-      const { data: me } = await supabase.auth.getUser();
-      if (!me.user) return [];
-      const { data: fr, error: frErr } = await supabase
-        .from("friendships")
-        .select("friend_id")
-        .eq("user_id", me.user.id);
-      if (frErr) throw frErr;
-      userIds = [me.user.id, ...(fr ?? []).map((r: any) => r.friend_id)];
-      if (userIds.length === 0) return [];
-    }
+        if (scope === "weekly") {
+          sessions = sessions.filter(
+            (s) =>
+              new Date(s.createdAt).getTime() >=
+              since(7)
+          );
+        }
 
-    let q = supabase
-      .from("sessions")
-      .select("id, user_id, wpm, accuracy, created_at, profiles:user_id ( username, name )")
-      .order("wpm", { ascending: false })
-      .limit(50);
+        if (scope === "monthly") {
+          sessions = sessions.filter(
+            (s) =>
+              new Date(s.createdAt).getTime() >=
+              since(30)
+          );
+        }
 
-    if (scope === "weekly") q = q.gte("created_at", sinceIso(7));
-    else if (scope === "monthly") q = q.gte("created_at", sinceIso(30));
-    if (userIds) q = q.in("user_id", userIds);
+        if (scope === "friends") {
+          const uid =
+            authController.getSession()?.user.id;
 
-    const { data, error } = await q;
-    if (error) throw error;
+          if (!uid) return [];
 
-    // Best result per user
-    const seen = new Set<string>();
-    const top: LeaderboardEntry[] = [];
-    let rank = 1;
-    for (const row of (data ?? []) as any[]) {
-      if (seen.has(row.user_id)) continue;
-      seen.add(row.user_id);
-      top.push({
-        id: row.id,
-        username: row.profiles?.username ?? "anonymous",
-        name: row.profiles?.name ?? "",
-        wpm: row.wpm,
-        accuracy: Number(row.accuracy),
-        date: row.created_at,
-        rank: rank++,
-      });
-    }
-    return top;
+          const friends = db
+            .table("friendships")
+            .filter(
+              (f) =>
+                f.userId === uid &&
+                f.status === "accepted"
+            )
+            .map((f) => f.friendId);
+
+          sessions = sessions.filter(
+            (s) =>
+              s.userId === uid ||
+              friends.includes(s.userId)
+          );
+        }
+
+        sessions.sort((a, b) => b.wpm - a.wpm);
+
+        const seen = new Set<string>();
+
+        const top: LeaderboardEntry[] = [];
+
+        let rank = 1;
+
+        for (const s of sessions) {
+          if (seen.has(s.userId)) continue;
+
+          seen.add(s.userId);
+
+          const profile = db.find(
+            "profiles",
+            (p) => p.id === s.userId
+          );
+
+          top.push({
+            id: s.id,
+            username:
+              profile?.username ?? "anonymous",
+            name: profile?.name ?? "",
+            wpm: s.wpm,
+            accuracy: s.accuracy,
+            date: s.createdAt,
+            rank: rank++,
+          });
+        }
+
+        return top.slice(0, 50);
+      }
+    ).then((r) => r.data);
   },
 };

@@ -1,4 +1,6 @@
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/mock/db/schema";
+import { request } from "@/mock/transport";
+import { authController } from "../mock/auth/controllers/authControllers";
 
 export type Session = {
   id: string;
@@ -19,91 +21,120 @@ export type CreateSessionInput = {
   correctChars: number;
 };
 
-type Row = {
-  id: string;
-  user_id: string;
-  passage_id: string;
-  wpm: number;
-  accuracy: number;
-  duration: number;
-  correct_chars: number;
-  created_at: string;
-};
-
-const map = (r: Row): Session => ({
-  id: r.id,
-  userId: r.user_id,
-  passageId: r.passage_id,
-  wpm: r.wpm,
-  accuracy: Number(r.accuracy),
-  duration: r.duration,
-  correctChars: r.correct_chars,
-  createdAt: r.created_at,
-});
-
-async function currentUserId(): Promise<string | null> {
-  const { data } = await supabase.auth.getUser();
-  return data.user?.id ?? null;
+function currentUserId() {
+  return authController.getSession()?.user.id ?? null;
 }
 
 export const sessionsService = {
   async list(limit = 20): Promise<Session[]> {
-    const uid = await currentUserId();
-    if (!uid) return [];
-    const { data, error } = await supabase
-      .from("sessions")
-      .select("*")
-      .eq("user_id", uid)
-      .order("created_at", { ascending: false })
-      .limit(limit);
-    if (error) throw error;
-    return (data as Row[]).map(map);
+    return request("GET", "/sessions", () => {
+      const uid = currentUserId();
+
+      if (!uid) return [];
+
+      return db
+        .table("sessions")
+        .filter((s) => s.userId === uid)
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() -
+            new Date(a.createdAt).getTime()
+        )
+        .slice(0, limit);
+    }).then((r) => r.data);
   },
 
-  async create(input: CreateSessionInput): Promise<Session> {
-    const uid = await currentUserId();
-    if (!uid) throw new Error("Sign in to save sessions");
-    const { data, error } = await supabase
-      .from("sessions")
-      .insert({
-        user_id: uid,
-        passage_id: input.passageId,
+  async create(
+    input: CreateSessionInput
+  ): Promise<Session> {
+    return request("POST", "/sessions", () => {
+      const uid = currentUserId();
+
+      if (!uid) {
+        throw new Error(
+          "Sign in to save sessions"
+        );
+      }
+
+      const session: Session = {
+        id: crypto.randomUUID(),
+        userId: uid,
+        passageId: input.passageId,
         wpm: input.wpm,
         accuracy: input.accuracy,
         duration: input.duration,
-        correct_chars: input.correctChars,
-      })
-      .select("*")
-      .single();
-    if (error) throw error;
-    return map(data as Row);
+        correctChars: input.correctChars,
+        createdAt: new Date().toISOString(),
+      };
+
+      db.insert("sessions", {
+        ...session,
+        errorChars: 0,
+      });
+
+      return session;
+    }).then((r) => r.data);
   },
 
-  async remove(id: string): Promise<{ ok: true }> {
-    const { error } = await supabase.from("sessions").delete().eq("id", id);
-    if (error) throw error;
-    return { ok: true };
+  async remove(id: string) {
+    return request("DELETE", "/sessions", () => {
+      db.delete("sessions", (s) => s.id === id);
+
+      return { ok: true };
+    }).then((r) => r.data);
   },
 
   async stats() {
-    const uid = await currentUserId();
-    if (!uid) return { bestWpm: 0, avgWpm: 0, avgAccuracy: 0, count: 0, series: [] as number[] };
-    const { data, error } = await supabase
-      .from("sessions")
-      .select("wpm, accuracy, created_at")
-      .eq("user_id", uid)
-      .order("created_at", { ascending: true });
-    if (error) throw error;
-    const ss = data ?? [];
-    if (ss.length === 0) {
-      return { bestWpm: 0, avgWpm: 0, avgAccuracy: 0, count: 0, series: [] as number[] };
-    }
-    const wpms = ss.map((s: any) => s.wpm as number);
-    const accs = ss.map((s: any) => Number(s.accuracy));
-    const bestWpm = Math.max(...wpms);
-    const avgWpm = Math.round(wpms.reduce((a, b) => a + b, 0) / wpms.length);
-    const avgAccuracy = Math.round((accs.reduce((a, b) => a + b, 0) / accs.length) * 10) / 10;
-    const series = wpms.slice(-15);
-    return { bestWpm, avgWpm, avgAccuracy, count: ss.length, series };
+    return request("GET", "/sessions/stats", () => {
+      const uid = currentUserId();
+
+      if (!uid) {
+        return {
+          bestWpm: 0,
+          avgWpm: 0,
+          avgAccuracy: 0,
+          count: 0,
+          series: [],
+        };
+      }
+
+      const ss = db
+        .table("sessions")
+        .filter((s) => s.userId === uid);
+
+      if (!ss.length) {
+        return {
+          bestWpm: 0,
+          avgWpm: 0,
+          avgAccuracy: 0,
+          count: 0,
+          series: [],
+        };
+      }
+
+      const wpms = ss.map((s) => s.wpm);
+
+      const accs = ss.map((s) => s.accuracy);
+
+      return {
+        bestWpm: Math.max(...wpms),
+
+        avgWpm: Math.round(
+          wpms.reduce((a, b) => a + b, 0) /
+            wpms.length
+        ),
+
+        avgAccuracy:
+          Math.round(
+            (accs.reduce((a, b) => a + b, 0) /
+              accs.length) *
+              10
+          ) / 10,
+
+        count: ss.length,
+
+        series: wpms.slice(-15),
+      };
+    }).then((r) => r.data);
   },
 };

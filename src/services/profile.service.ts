@@ -1,4 +1,8 @@
-import { supabase } from "@/integrations/supabase/client";
+// src/services/profile.service.ts
+
+import { db } from "@/mock/db/schema";
+import { request, notFound, unauthorized } from "@/mock/transport";
+import { authController } from "../mock/auth/controllers/authControllers";
 
 export type Profile = {
   id: string;
@@ -7,37 +11,65 @@ export type Profile = {
   joinedAt: string;
 };
 
-type Row = { id: string; name: string; username: string; joined_at: string };
-const map = (r: Row): Profile => ({
-  id: r.id,
-  name: r.name,
-  username: r.username,
-  joinedAt: r.joined_at,
-});
-
 export const profileService = {
   async me(): Promise<Profile | null> {
-    const { data: u } = await supabase.auth.getUser();
-    if (!u.user) return null;
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id, name, username, joined_at")
-      .eq("id", u.user.id)
-      .maybeSingle();
-    if (error) throw error;
-    return data ? map(data as Row) : null;
+    return request("GET", "/profile/me", async () => {
+      const session = authController.getSession();
+
+      if (!session) unauthorized();
+
+      const profile = db.find(
+        "profiles",
+        (p) => p.id === session.user.id
+      );
+
+      if (!profile) return null;
+
+      return {
+        id: profile.id,
+        name: profile.name,
+        username: profile.username,
+        joinedAt: profile.joined_at,
+      };
+    }).then((r) => r.data);
   },
 
-  async update(patch: Partial<Pick<Profile, "name" | "username">>): Promise<Profile> {
-    const { data: u } = await supabase.auth.getUser();
-    if (!u.user) throw new Error("Not signed in");
-    const { data, error } = await supabase
-      .from("profiles")
-      .update(patch)
-      .eq("id", u.user.id)
-      .select("id, name, username, joined_at")
-      .single();
-    if (error) throw error;
-    return map(data as Row);
+  async update(
+    patch: Partial<Pick<Profile, "name" | "username">>
+  ): Promise<Profile> {
+    return request("PATCH", "/profile/me", async () => {
+      const session = authController.getSession();
+
+      if (!session) unauthorized();
+
+      const profile = db.find(
+        "profiles",
+        (p) => p.id === session.user.id
+      );
+
+      if (!profile) notFound("Profile");
+
+      db.update(
+        "profiles",
+        (p) => p.id === session.user.id,
+        (p) => ({
+          ...p,
+          name: patch.name ?? p.name,
+          username: patch.username?.toLowerCase() ?? p.username,
+        })
+      );
+
+      const updated = db.find(
+        "profiles",
+        (p) => p.id === session.user.id
+      )!;
+
+      return {
+        id: updated.id,
+        name: updated.name,
+        username: updated.username,
+        joinedAt: updated.joined_at,
+      };
+    }).then((r) => r.data);
   },
 };
