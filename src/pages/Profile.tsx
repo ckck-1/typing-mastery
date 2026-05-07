@@ -139,7 +139,7 @@ export default function Profile() {
     { label: "Best WPM", value: stats?.bestWpm ?? "—" },
     { label: "Average WPM", value: stats?.avgWpm ?? "—" },
     { label: "Accuracy", value: stats?.avgAccuracy != null ? `${stats.avgAccuracy}%` : "—" },
-    { label: "Tests", value: stats?.testsCompleted ?? 0 },
+    { label: "Tests", value: stats?.count ?? 0 },
     { label: "Friends", value: friends.length },
     { label: "Member", value: new Date(profile.joined_at).getFullYear() },
   ];
