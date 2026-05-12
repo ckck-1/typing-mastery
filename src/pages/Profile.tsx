@@ -479,6 +479,44 @@ export default function ProfilePage() {
               )}
           </div>
 
+          {/* Pending Requests */}
+          {pending.length > 0 && (
+            <div className="mt-8">
+              <h3 className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground mb-3">
+                Friend requests · {pending.length}
+              </h3>
+              <ul className="divide-y divide-border/70 hairline border rounded-md overflow-hidden">
+                {pending.map((r) => (
+                  <li
+                    key={r.friendshipId}
+                    className="flex items-center justify-between px-4 py-3 bg-card"
+                  >
+                    <div>
+                      <div className="text-[13px] text-foreground">{r.name}</div>
+                      <div className="text-[11px] text-muted-foreground">
+                        @{r.username} · wants to connect
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => acceptRequest(r)}
+                        className="text-[12px] px-3 py-1.5 rounded bg-primary text-primary-foreground"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        onClick={() => declineRequest(r)}
+                        className="text-[12px] px-3 py-1.5 rounded border border-border text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {/* Friends List */}
 
           <div className="mt-8">
