@@ -14,6 +14,7 @@ import { toast } from "@/hooks/use-toast";
 import {
   friendsService,
   type FriendProfile,
+  type PendingRequest,
 } from "@/services/friends.service";
 
 import {
@@ -40,6 +41,7 @@ export default function ProfilePage() {
 
   // friends
   const [friends, setFriends] = useState<FriendProfile[]>([]);
+  const [pending, setPending] = useState<PendingRequest[]>([]);
 
   // search
   const [search, setSearch] = useState("");
@@ -74,9 +76,12 @@ export default function ProfilePage() {
       setName(me.name);
       setUsername(me.username);
 
-      const fs = await friendsService.listFriends();
-
+      const [fs, ps] = await Promise.all([
+        friendsService.listFriends(),
+        friendsService.listPending(),
+      ]);
       setFriends(fs);
+      setPending(ps);
     } catch (e: any) {
       setError(e.message ?? "Failed to load profile");
     } finally {
@@ -176,6 +181,30 @@ export default function ProfilePage() {
   // ─────────────────────────────────────────────────────────────
   // Remove friend
   // ─────────────────────────────────────────────────────────────
+
+  const acceptRequest = async (req: PendingRequest) => {
+    try {
+      await friendsService.accept(req.friendshipId);
+      setPending((p) => p.filter((r) => r.friendshipId !== req.friendshipId));
+      setFriends((prev) => [
+        ...prev,
+        { id: req.id, name: req.name, username: req.username, joined_at: req.joined_at },
+      ]);
+      toast({ title: `You and @${req.username} are now connected` });
+    } catch (e: any) {
+      toast({ title: "Could not accept", description: e.message });
+    }
+  };
+
+  const declineRequest = async (req: PendingRequest) => {
+    try {
+      await friendsService.decline(req.friendshipId);
+      setPending((p) => p.filter((r) => r.friendshipId !== req.friendshipId));
+      toast({ title: `Declined @${req.username}` });
+    } catch (e: any) {
+      toast({ title: "Could not decline", description: e.message });
+    }
+  };
 
   const removeFriend = async (
     friend: FriendProfile
