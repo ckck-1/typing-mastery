@@ -57,7 +57,23 @@ export default function Practice() {
         correctChars: stats.correct,
       },
       {
-        onSuccess: () => toast({ title: "Session saved", description: `${stats.wpm} WPM · ${stats.accuracy}%` }),
+        onSuccess: async () => {
+          toast({ title: "Session saved", description: `${stats.wpm} WPM · ${stats.accuracy}%` });
+          // Award XP: scale with WPM and accuracy
+          try {
+            const xp = Math.round(stats.wpm * (stats.accuracy / 100) * (duration / 60) * 2);
+            const words = Math.round(stats.correct / 5);
+            const res = await progressionService.award({ xp, words });
+            if (res.leveledUp) {
+              toast({ title: `Level up — Lv ${res.after.level}`, description: res.after.rank });
+            } else if (res.newAchievements.length) {
+              toast({
+                title: "Achievement unlocked",
+                description: progressionService.achievementLabel(res.newAchievements[0]),
+              });
+            }
+          } catch {}
+        },
         onError: (e: any) => toast({ title: "Could not save session", description: e?.message ?? "Network error" }),
       },
     );
