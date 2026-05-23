@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Layout } from "@/components/academy/Layout";
 import { GhostHand } from "@/components/academy/GhostHand";
+import { KeyboardVisual, type LastKey } from "@/components/academy/KeyboardVisual";
 import { fingerFor, FINGER_LABEL } from "@/components/academy/fingerMap";
 import { ErrorNote, LoadingLine, SkeletonBlock } from "@/components/academy/States";
 import { useCreateSession, useRandomPassage } from "@/hooks/api";
+import { progressionService } from "@/services/progression.service";
 import { toast } from "@/hooks/use-toast";
 
 const DURATIONS = [15, 30, 60, 120];
