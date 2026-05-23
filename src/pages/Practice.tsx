@@ -23,9 +23,6 @@ export default function Practice() {
   const [showKeyboard, setShowKeyboard] = useState(true);
   const [showGhost, setShowGhost] = useState(true);
   const [lastKey, setLastKey] = useState<LastKey>(null);
-  const [timeLeft, setTimeLeft] = useState(60);
-  const [showKeyboard, setShowKeyboard] = useState(true);
-  const [showGhost, setShowGhost] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
   const submittedRef = useRef(false);
 
