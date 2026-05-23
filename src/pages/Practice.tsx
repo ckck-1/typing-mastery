@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Layout } from "@/components/academy/Layout";
 import { GhostHand } from "@/components/academy/GhostHand";
+import { KeyboardVisual, type LastKey } from "@/components/academy/KeyboardVisual";
 import { fingerFor, FINGER_LABEL } from "@/components/academy/fingerMap";
 import { ErrorNote, LoadingLine, SkeletonBlock } from "@/components/academy/States";
 import { useCreateSession, useRandomPassage } from "@/hooks/api";
+import { progressionService } from "@/services/progression.service";
 import { toast } from "@/hooks/use-toast";
 
 const DURATIONS = [15, 30, 60, 120];
@@ -20,6 +22,7 @@ export default function Practice() {
   const [timeLeft, setTimeLeft] = useState(60);
   const [showKeyboard, setShowKeyboard] = useState(true);
   const [showGhost, setShowGhost] = useState(true);
+  const [lastKey, setLastKey] = useState<LastKey>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const submittedRef = useRef(false);
 
@@ -54,7 +57,23 @@ export default function Practice() {
         correctChars: stats.correct,
       },
       {
-        onSuccess: () => toast({ title: "Session saved", description: `${stats.wpm} WPM · ${stats.accuracy}%` }),
+        onSuccess: async () => {
+          toast({ title: "Session saved", description: `${stats.wpm} WPM · ${stats.accuracy}%` });
+          // Award XP: scale with WPM and accuracy
+          try {
+            const xp = Math.round(stats.wpm * (stats.accuracy / 100) * (duration / 60) * 2);
+            const words = Math.round(stats.correct / 5);
+            const res = await progressionService.award({ xp, words });
+            if (res.leveledUp) {
+              toast({ title: `Level up — Lv ${res.after.level}`, description: res.after.rank });
+            } else if (res.newAchievements.length) {
+              toast({
+                title: "Achievement unlocked",
+                description: progressionService.achievementLabel(res.newAchievements[0]),
+              });
+            }
+          } catch {}
+        },
         onError: (e: any) => toast({ title: "Could not save session", description: e?.message ?? "Network error" }),
       },
     );
@@ -79,8 +98,17 @@ export default function Practice() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (finished || !text) return;
-    if (!started && e.target.value.length > 0) setStarted(true);
-    if (e.target.value.length <= text.length) setInput(e.target.value);
+    const val = e.target.value;
+    if (!started && val.length > 0) setStarted(true);
+    if (val.length <= text.length) {
+      // Track last keystroke for keyboard flash
+      if (val.length > input.length) {
+        const ch = val[val.length - 1];
+        const expected = text[val.length - 1];
+        setLastKey({ key: ch, ok: ch === expected, at: performance.now() });
+      }
+      setInput(val);
+    }
   };
 
   const progress = text ? (input.length / text.length) * 100 : 0;
@@ -254,7 +282,7 @@ export default function Practice() {
                   </div>
                 </div>
               )}
-              {showKeyboard && <KeyboardVisual nextKey={nextChar} />}
+              {showKeyboard && <KeyboardVisual nextKey={nextChar} lastKey={lastKey} />}
             </div>
           </div>
         )}
@@ -270,42 +298,3 @@ const Stat = ({ label, value, mono }: { label: string; value: string | number; m
   </div>
 );
 
-const KEYS = [
-  ["Q","W","E","R","T","Y","U","I","O","P"],
-  ["A","S","D","F","G","H","J","K","L",";"],
-  ["Z","X","C","V","B","N","M",",",".","/"],
-];
-const KeyboardVisual = ({ nextKey }: { nextKey: string }) => {
-  const target = (nextKey || "").toUpperCase();
-  const isSpace = nextKey === " ";
-  return (
-    <div className="bg-card hairline border rounded-md p-5">
-      <div className="flex justify-between items-center mb-3">
-        <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Keyboard</div>
-        <div className="text-[11px] text-muted-foreground">{isSpace ? "space" : target || "—"}</div>
-      </div>
-      {KEYS.map((row, i) => (
-        <div key={i} className="flex justify-center gap-1 mb-1" style={{ paddingLeft: i * 10 }}>
-          {row.map((k) => {
-            const on = !isSpace && k === target;
-            return (
-              <div
-                key={k}
-                className={`w-7 h-7 rounded border flex items-center justify-center text-[10px] transition-all ${
-                  on ? "border-accent/60 bg-accent/15 text-foreground" : "border-border/70 text-muted-foreground"
-                }`}
-              >
-                {k}
-              </div>
-            );
-          })}
-        </div>
-      ))}
-      <div className="flex justify-center pt-1">
-        <div className={`w-[200px] h-6 rounded border text-[10px] flex items-center justify-center transition-all ${
-          isSpace ? "border-accent/60 bg-accent/15 text-foreground" : "border-border/70 text-muted-foreground"
-        }`}>space</div>
-      </div>
-    </div>
-  );
-};
