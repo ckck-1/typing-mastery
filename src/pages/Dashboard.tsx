@@ -4,17 +4,20 @@ import { useSessions, useSessionStats } from "@/hooks/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffect, useState } from "react";
 import { profileService, type Profile } from "@/services/profile.service";
+import { progressionService, type Progression, xpProgress } from "@/services/progression.service";
 
 export default function Dashboard() {
   const { user } = useAuth();
   const stats = useSessionStats();
   const sessions = useSessions(8);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [progression, setProgression] = useState<Progression | null>(null);
 
   useEffect(() => {
     if (!user) return;
     profileService.me().then(setProfile).catch(() => {});
-  }, [user?.id]);
+    progressionService.get().then(setProgression).catch(() => {});
+  }, [user?.id, stats.dataUpdatedAt]);
 
   const loading = stats.isLoading || sessions.isLoading;
   const error = stats.error || sessions.error;
@@ -67,6 +70,45 @@ export default function Dashboard() {
             </div>
           ))}
         </div>
+
+        {progression && (() => {
+          const xp = xpProgress(progression.xp);
+          return (
+            <div className="bg-card hairline border rounded-md p-6 mb-10 shadow-sheet">
+              <div className="flex flex-wrap items-center justify-between gap-6">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground mb-1">Rank</div>
+                  <div className="font-serif text-2xl">{xp.rank}</div>
+                  <div className="text-[12px] text-muted-foreground mt-1">Level {xp.level} · {progression.xp} XP total</div>
+                </div>
+                <div className="flex-1 min-w-[200px] max-w-md">
+                  <div className="flex justify-between text-[11px] text-muted-foreground mb-1.5 tabular-nums">
+                    <span>Lv {xp.level}</span>
+                    <span>{xp.intoLevel} / {xp.needed} XP</span>
+                    <span>Lv {xp.level + 1}</span>
+                  </div>
+                  <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
+                    <div className="h-full bg-accent transition-all duration-500" style={{ width: `${xp.pct}%` }} />
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Badge label="Combo" value={`x${progression.bestCombo}`} />
+                  <Badge label="Arcade" value={progression.bestArcadeScore} />
+                  <Badge label="Badges" value={progression.achievements.length} />
+                </div>
+              </div>
+              {progression.achievements.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-5 pt-5 border-t border-border/60">
+                  {progression.achievements.map((id) => (
+                    <span key={id} className="text-[11px] px-2.5 py-1 rounded-full border border-accent/40 bg-accent/10 text-foreground">
+                      ★ {progressionService.achievementLabel(id)}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         <div className="grid lg:grid-cols-3 gap-10">
           <section className="lg:col-span-2 bg-card hairline border rounded-md p-8 shadow-sheet">
