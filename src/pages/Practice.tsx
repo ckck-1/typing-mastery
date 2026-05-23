@@ -266,7 +266,7 @@ export default function Practice() {
                   </div>
                 </div>
               )}
-              {showKeyboard && <KeyboardVisual nextKey={nextChar} />}
+              {showKeyboard && <KeyboardVisual nextKey={nextChar} lastKey={lastKey} />}
             </div>
           </div>
         )}
