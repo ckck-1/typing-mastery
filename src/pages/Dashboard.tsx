@@ -186,3 +186,10 @@ export default function Dashboard() {
     </Layout>
   );
 }
+
+const Badge = ({ label, value }: { label: string; value: string | number }) => (
+  <div className="text-right">
+    <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">{label}</div>
+    <div className="font-serif text-lg tabular-nums">{value}</div>
+  </div>
+);
