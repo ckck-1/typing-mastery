@@ -22,6 +22,10 @@ export default function Practice() {
   const [timeLeft, setTimeLeft] = useState(60);
   const [showKeyboard, setShowKeyboard] = useState(true);
   const [showGhost, setShowGhost] = useState(true);
+  const [lastKey, setLastKey] = useState<LastKey>(null);
+  const [timeLeft, setTimeLeft] = useState(60);
+  const [showKeyboard, setShowKeyboard] = useState(true);
+  const [showGhost, setShowGhost] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
   const submittedRef = useRef(false);
 
@@ -81,8 +85,17 @@ export default function Practice() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (finished || !text) return;
-    if (!started && e.target.value.length > 0) setStarted(true);
-    if (e.target.value.length <= text.length) setInput(e.target.value);
+    const val = e.target.value;
+    if (!started && val.length > 0) setStarted(true);
+    if (val.length <= text.length) {
+      // Track last keystroke for keyboard flash
+      if (val.length > input.length) {
+        const ch = val[val.length - 1];
+        const expected = text[val.length - 1];
+        setLastKey({ key: ch, ok: ch === expected, at: performance.now() });
+      }
+      setInput(val);
+    }
   };
 
   const progress = text ? (input.length / text.length) * 100 : 0;
