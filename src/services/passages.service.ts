@@ -1,23 +1,26 @@
-import { db, type Passage } from "@/mock/db/schema";
+import { api } from "@/lib/api";
 
-export type { Passage };
+export type Passage = {
+  id: number;
+  text: string;
+  source?: string;
+  language?: string;
+  mode?: string;
+};
+
+function normalize(raw: any): Passage {
+  return {
+    id: raw.id,
+    text: raw.contentText ?? raw.content ?? raw.text ?? "",
+    source: raw.source,
+    language: raw.language,
+    mode: raw.mode,
+  };
+}
 
 export const passagesService = {
-  list: () => db.table("passages"),
-
-  get: (id: string) => {
-    const p = db.find("passages", (x) => x.id === id);
-    if (!p) throw new Error("Passage not found");
-    return p;
-  },
-
-  random: (category?: Passage["category"]) => {
-    const all = db
-      .table("passages")
-      .filter((p) => !category || p.category === category);
-
-    if (all.length === 0) throw new Error("Passage not found");
-
-    return all[Math.floor(Math.random() * all.length)];
+  async random(mode?: "quote" | "custom" | "lesson"): Promise<Passage> {
+    const raw = await api<any>("/tests/passage", { query: mode ? { mode } : undefined });
+    return normalize(raw);
   },
 };

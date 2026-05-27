@@ -33,7 +33,7 @@ export default function Dashboard() {
   const max = series.length ? Math.max(...series) : 1;
   const min = series.length ? Math.min(...series) : 0;
 
-  const firstName = profile?.name?.split(" ")[0] ?? user?.email?.split("@")[0] ?? "there";
+  const firstName = profile?.username ?? user?.email?.split("@")[0] ?? "there";
 
   return (
     <Layout>

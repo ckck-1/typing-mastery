@@ -179,8 +179,8 @@ export default function Practice() {
             {!isLoading && !isError && passage && (
               <>
                 <div className="flex items-center justify-between mb-6 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                  <span>{passage.title}</span>
-                  <span>· {passage.category}</span>
+                  <span>{passage.source ?? "Passage"}</span>
+                  {passage.language && <span>· {passage.language}</span>}
                 </div>
                 <input
                   ref={inputRef}

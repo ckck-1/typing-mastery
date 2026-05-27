@@ -1,140 +1,70 @@
-import { db } from "@/mock/db/schema";
-import { request } from "@/mock/transport";
-import { authController } from "../mock/auth/controllers/authControllers";
+import { api } from "@/lib/api";
 
 export type Session = {
-  id: string;
-  userId: string;
-  passageId: string;
+  id: number;
   wpm: number;
   accuracy: number;
   duration: number;
-  correctChars: number;
+  mode: string;
+  passageId?: number;
   createdAt: string;
 };
 
 export type CreateSessionInput = {
-  passageId: string;
+  passageId?: number;
   wpm: number;
   accuracy: number;
   duration: number;
-  correctChars: number;
+  mode?: string;
+  correctChars?: number;
 };
 
-function currentUserId() {
-  return authController.getSession()?.user.id ?? null;
+function normalize(raw: any): Session {
+  return {
+    id: raw.id,
+    wpm: Number(raw.wpm) || 0,
+    accuracy: Number(raw.accuracy) || 0,
+    duration: Number(raw.duration) || 0,
+    mode: raw.mode ?? "quote",
+    passageId: raw.passageId,
+    createdAt: raw.createdAt ?? raw.created_at ?? new Date().toISOString(),
+  };
 }
 
 export const sessionsService = {
   async list(limit = 20): Promise<Session[]> {
-    return request("GET", "/sessions", () => {
-      const uid = currentUserId();
-
-      if (!uid) return [];
-
-      return db
-        .table("sessions")
-        .filter((s) => s.userId === uid)
-        .sort(
-          (a, b) =>
-            new Date(b.createdAt).getTime() -
-            new Date(a.createdAt).getTime()
-        )
-        .slice(0, limit);
-    }).then((r) => r.data);
+    const raw = await api<any>("/tests/results");
+    const rows: any[] = Array.isArray(raw) ? raw : raw?.results ?? raw?.data ?? [];
+    return rows
+      .map(normalize)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, limit);
   },
 
-  async create(
-    input: CreateSessionInput
-  ): Promise<Session> {
-    return request("POST", "/sessions", () => {
-      const uid = currentUserId();
-
-      if (!uid) {
-        throw new Error(
-          "Sign in to save sessions"
-        );
-      }
-
-      const session: Session = {
-        id: crypto.randomUUID(),
-        userId: uid,
-        passageId: input.passageId,
-        wpm: input.wpm,
-        accuracy: input.accuracy,
-        duration: input.duration,
-        correctChars: input.correctChars,
-        createdAt: new Date().toISOString(),
-      };
-
-      db.insert("sessions", {
-        ...session,
-        errorChars: 0,
-      });
-
-      return session;
-    }).then((r) => r.data);
-  },
-
-  async remove(id: string) {
-    return request("DELETE", "/sessions", () => {
-      db.delete("sessions", (s) => s.id === id);
-
-      return { ok: true };
-    }).then((r) => r.data);
+  async create(input: CreateSessionInput): Promise<Session> {
+    const raw = await api<any>("/tests/result", {
+      method: "POST",
+      body: {
+        wpm: Math.round(input.wpm),
+        accuracy: Math.round(input.accuracy),
+        duration: Math.round(input.duration),
+        mode: input.mode ?? "quote",
+        ...(input.passageId !== undefined ? { passageId: input.passageId } : {}),
+      },
+    });
+    return normalize(raw ?? input);
   },
 
   async stats() {
-    return request("GET", "/sessions/stats", () => {
-      const uid = currentUserId();
-
-      if (!uid) {
-        return {
-          bestWpm: 0,
-          avgWpm: 0,
-          avgAccuracy: 0,
-          count: 0,
-          series: [],
-        };
-      }
-
-      const ss = db
-        .table("sessions")
-        .filter((s) => s.userId === uid);
-
-      if (!ss.length) {
-        return {
-          bestWpm: 0,
-          avgWpm: 0,
-          avgAccuracy: 0,
-          count: 0,
-          series: [],
-        };
-      }
-
-      const wpms = ss.map((s) => s.wpm);
-
-      const accs = ss.map((s) => s.accuracy);
-
-      return {
-        bestWpm: Math.max(...wpms),
-
-        avgWpm: Math.round(
-          wpms.reduce((a, b) => a + b, 0) /
-            wpms.length
-        ),
-
-        avgAccuracy:
-          Math.round(
-            (accs.reduce((a, b) => a + b, 0) /
-              accs.length) *
-              10
-          ) / 10,
-
-        count: ss.length,
-
-        series: wpms.slice(-15),
-      };
-    }).then((r) => r.data);
+    const sessions = await this.list(100);
+    if (sessions.length === 0) {
+      return { bestWpm: 0, avgWpm: 0, avgAccuracy: 0, count: 0, series: [] as number[] };
+    }
+    const count = sessions.length;
+    const bestWpm = Math.max(...sessions.map((s) => s.wpm));
+    const avgWpm = Math.round(sessions.reduce((a, s) => a + s.wpm, 0) / count);
+    const avgAccuracy = Math.round(sessions.reduce((a, s) => a + s.accuracy, 0) / count);
+    const series = [...sessions].reverse().slice(-12).map((s) => s.wpm);
+    return { bestWpm, avgWpm, avgAccuracy, count, series };
   },
 };
