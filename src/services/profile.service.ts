@@ -1,75 +1,49 @@
-// src/services/profile.service.ts
-
-import { db } from "@/mock/db/schema";
-import { request, notFound, unauthorized } from "@/mock/transport";
-import { authController } from "../mock/auth/controllers/authControllers";
+import { api } from "@/lib/api";
 
 export type Profile = {
-  id: string;
-  name: string;
+  id: number;
   username: string;
+  email?: string;
+  avatarUrl?: string | null;
   joinedAt: string;
+  emailNotificationsEnabled?: boolean;
 };
 
+function normalize(raw: any): Profile {
+  return {
+    id: raw.id,
+    username: raw.username,
+    email: raw.email,
+    avatarUrl: raw.avatarUrl ?? raw.avatar_url ?? null,
+    joinedAt: raw.createdAt ?? raw.created_at ?? raw.joinedAt ?? new Date().toISOString(),
+    emailNotificationsEnabled: raw.emailNotificationsEnabled,
+  };
+}
+
 export const profileService = {
-  async me(): Promise<Profile | null> {
-    return request("GET", "/profile/me", async () => {
-      const session = authController.getSession();
-
-      if (!session) unauthorized();
-
-      const profile = db.find(
-        "profiles",
-        (p) => p.id === session.user.id
-      );
-
-      if (!profile) return null;
-
-      return {
-        id: profile.id,
-        name: profile.name,
-        username: profile.username,
-        joinedAt: profile.joined_at,
-      };
-    }).then((r) => r.data);
+  async me(): Promise<Profile> {
+    const raw = await api<any>("/profile/me");
+    return normalize(raw);
   },
 
-  async update(
-    patch: Partial<Pick<Profile, "name" | "username">>
-  ): Promise<Profile> {
-    return request("PATCH", "/profile/me", async () => {
-      const session = authController.getSession();
+  async update(patch: { username?: string; emailNotificationsEnabled?: boolean }): Promise<Profile> {
+    const raw = await api<any>("/profile/me", { method: "PUT", body: patch });
+    return normalize(raw);
+  },
 
-      if (!session) unauthorized();
+  async getPublic(userId: number): Promise<Profile> {
+    const raw = await api<any>(`/profile/${userId}`);
+    return normalize(raw);
+  },
 
-      const profile = db.find(
-        "profiles",
-        (p) => p.id === session.user.id
-      );
+  async uploadAvatar(file: File): Promise<Profile> {
+    const fd = new FormData();
+    fd.append("avatar", file);
+    const raw = await api<any>("/profile/avatar", { method: "POST", body: fd });
+    return normalize(raw);
+  },
 
-      if (!profile) notFound("Profile");
-
-      db.update(
-        "profiles",
-        (p) => p.id === session.user.id,
-        (p) => ({
-          ...p,
-          name: patch.name ?? p.name,
-          username: patch.username?.toLowerCase() ?? p.username,
-        })
-      );
-
-      const updated = db.find(
-        "profiles",
-        (p) => p.id === session.user.id
-      )!;
-
-      return {
-        id: updated.id,
-        name: updated.name,
-        username: updated.username,
-        joinedAt: updated.joined_at,
-      };
-    }).then((r) => r.data);
+  async deleteAccount(): Promise<void> {
+    await api("/profile/me", { method: "DELETE" });
   },
 };

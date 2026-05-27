@@ -1,10 +1,9 @@
 /**
- * Progression service — XP, levels, ranks, achievements.
- * Persists per-user via localStorage; same swap-in interface so it can move
- * to a real backend later without touching components.
+ * Local XP / rank / achievement layer.
+ * Derives from completed sessions stored on the backend, but keeps
+ * progression state in localStorage so we don't need a dedicated endpoint.
  */
-import { request } from "@/mock/transport";
-import { authController } from "@/mock/auth/controllers/authControllers";
+import { sessionsService } from "@/services/sessions.service";
 
 export type Rank =
   | "Beginner"
@@ -63,15 +62,13 @@ export const xpProgress = (xp: number) => {
     rank: rankFromLevel(lvl),
     intoLevel: xp - base,
     needed: next - base,
-    pct: Math.min(100, Math.round(((xp - base) / (next - base)) * 100)),
+    pct: Math.min(100, Math.round(((xp - base) / Math.max(1, next - base)) * 100)),
   };
 };
 
 const KEY = (uid: string) => `typing-academy.progression.${uid}`;
-
-function uid() {
-  return authController.getSession()?.user.id ?? null;
-}
+let currentUserId: string | null = null;
+export function setProgressionUser(id: string | null) { currentUserId = id; }
 
 function load(userId: string): Progression {
   try {
@@ -84,7 +81,6 @@ function load(userId: string): Progression {
     achievements: [], updatedAt: new Date().toISOString(),
   };
 }
-
 function save(p: Progression) {
   try { localStorage.setItem(KEY(p.userId), JSON.stringify(p)); } catch {}
 }
@@ -102,10 +98,8 @@ const ACHIEVEMENTS: { id: string; label: string; check: (p: Progression) => bool
 
 export const progressionService = {
   async get(): Promise<Progression> {
-    return request("GET", "/progression", () => {
-      const id = uid(); if (!id) throw new Error("Sign in required");
-      return load(id);
-    }).then((r) => r.data);
+    if (!currentUserId) throw new Error("Sign in required");
+    return load(currentUserId);
   },
 
   async award(input: {
@@ -114,34 +108,44 @@ export const progressionService = {
     combo?: number;
     arcadeScore?: number;
   }): Promise<XpAward> {
-    return request("POST", "/progression/award", () => {
-      const id = uid(); if (!id) throw new Error("Sign in required");
-      const before = load(id);
-      const after: Progression = {
-        ...before,
-        xp: before.xp + Math.max(0, Math.round(input.xp)),
-        totalWords: before.totalWords + (input.words ?? 0),
-        bestCombo: Math.max(before.bestCombo, input.combo ?? 0),
-        bestArcadeScore: Math.max(before.bestArcadeScore, input.arcadeScore ?? 0),
-        updatedAt: new Date().toISOString(),
-      };
-      after.level = levelFromXp(after.xp);
-      after.rank = rankFromLevel(after.level);
-      const earned = ACHIEVEMENTS.filter(
-        (a) => a.check(after) && !before.achievements.includes(a.id),
-      ).map((a) => a.id);
-      after.achievements = [...before.achievements, ...earned];
-      save(after);
-      return {
-        xpGained: after.xp - before.xp,
-        before, after,
-        leveledUp: after.level > before.level,
-        newAchievements: earned,
-      };
-    }).then((r) => r.data);
+    if (!currentUserId) throw new Error("Sign in required");
+    const before = load(currentUserId);
+    const after: Progression = {
+      ...before,
+      xp: before.xp + Math.max(0, Math.round(input.xp)),
+      totalWords: before.totalWords + (input.words ?? 0),
+      bestCombo: Math.max(before.bestCombo, input.combo ?? 0),
+      bestArcadeScore: Math.max(before.bestArcadeScore, input.arcadeScore ?? 0),
+      updatedAt: new Date().toISOString(),
+    };
+    after.level = levelFromXp(after.xp);
+    after.rank = rankFromLevel(after.level);
+    const earned = ACHIEVEMENTS.filter(
+      (a) => a.check(after) && !before.achievements.includes(a.id),
+    ).map((a) => a.id);
+    after.achievements = [...before.achievements, ...earned];
+    save(after);
+    return {
+      xpGained: after.xp - before.xp,
+      before, after,
+      leveledUp: after.level > before.level,
+      newAchievements: earned,
+    };
   },
 
   achievementLabel(id: string) {
     return ACHIEVEMENTS.find((a) => a.id === id)?.label ?? id;
+  },
+
+  // Helper to bootstrap from history (optional)
+  async syncFromSessions() {
+    if (!currentUserId) return;
+    try {
+      const sessions = await sessionsService.list(100);
+      const totalWords = sessions.reduce((acc, s) => acc + Math.round((s.wpm * s.duration) / 60), 0);
+      const p = load(currentUserId);
+      p.totalWords = Math.max(p.totalWords, totalWords);
+      save(p);
+    } catch {}
   },
 };
