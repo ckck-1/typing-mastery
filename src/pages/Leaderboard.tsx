@@ -5,9 +5,7 @@ import { useLeaderboard } from "@/hooks/api";
 import type { LeaderboardScope } from "@/services/leaderboard.service";
 
 const TABS: { label: string; scope: LeaderboardScope }[] = [
-  { label: "Global", scope: "global" },
-  { label: "Weekly", scope: "weekly" },
-  { label: "Monthly", scope: "monthly" },
+  { label: "Worldwide", scope: "global" },
   { label: "Friends", scope: "friends" },
 ];
 
