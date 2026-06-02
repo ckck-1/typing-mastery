@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Layout } from "@/components/academy/Layout";
 import { useAuth } from "@/hooks/useAuth";
+import { authService } from "@/services/authService";
 import { toast } from "@/hooks/use-toast";
 import { z } from "zod";
 
@@ -45,10 +46,11 @@ export default function Auth() {
     try {
       if (otpMode && userId) {
         try {
-          await signUp(email, password, name, username.toLowerCase());
+          await authService.verifyOtp(userId, otp.trim());
           toast({ title: "Email verified", description: "You can now sign in." });
           setOtpMode(false);
           setMode("signin");
+          setOtp("");
         } catch (err: any) {
           toast({ title: "Verification failed", description: err.response?.data?.message || "Invalid OTP" });
         }

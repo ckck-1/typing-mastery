@@ -6,30 +6,51 @@ export type Profile = {
   username: string;
   joinedAt: string;
   email?: string;
+  avatarUrl?: string;
 };
 
+function normalize(raw: any): Profile {
+  return {
+    id: String(raw.id ?? raw.userId ?? ""),
+    name: raw.name ?? raw.fullName ?? raw.username ?? "",
+    username: raw.username ?? "",
+    joinedAt: raw.joinedAt ?? raw.createdAt ?? raw.created_at ?? new Date().toISOString(),
+    email: raw.email,
+    avatarUrl: raw.avatarUrl ?? raw.avatar_url,
+  };
+}
+
 export const profileService = {
-  async me(): Promise<Profile | null> {
-    try {
-      const res = await api.get("/profile/me");
-      return {
-        id: res.data.id,
-        name: res.data.name || res.data.username,
-        username: res.data.username,
-        joinedAt: res.data.joinedAt || res.data.createdAt,
-        email: res.data.email,
-      };
-    } catch (e) {
-      return null;
-    }
+  // GET /profile/me
+  async me(): Promise<Profile> {
+    const res = await api.get("/profile/me");
+    return normalize(res.data);
   },
 
-  async update(
-    patch: Partial<Pick<Profile, "name" | "username">>
-  ): Promise<Profile> {
-    // The Swagger doesn't show a direct profile update endpoint, 
-    // but typically it's PUT/PATCH /profile/me
-    const res = await api.patch("/profile/me", patch);
-    return res.data;
+  // PUT /profile/me
+  async update(patch: Partial<Pick<Profile, "name" | "username">>): Promise<Profile> {
+    const res = await api.put("/profile/me", patch);
+    return normalize(res.data?.profile ?? res.data);
+  },
+
+  // GET /profile/{userId}
+  async getPublic(userId: string): Promise<Profile> {
+    const res = await api.get(`/profile/${userId}`);
+    return normalize(res.data);
+  },
+
+  // POST /profile/avatar (multipart)
+  async uploadAvatar(file: File): Promise<Profile> {
+    const form = new FormData();
+    form.append("avatar", file);
+    const res = await api.post("/profile/avatar", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return normalize(res.data?.profile ?? res.data);
+  },
+
+  // DELETE /profile/me
+  async deleteAccount() {
+    await api.delete("/profile/me");
   },
 };
