@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Layout } from "@/components/academy/Layout";
 import { useAuth } from "@/hooks/useAuth";
+import { authService } from "@/services/authService";
 import { toast } from "@/hooks/use-toast";
 import { z } from "zod";
 
@@ -45,10 +46,11 @@ export default function Auth() {
     try {
       if (otpMode && userId) {
         try {
-          await signUp(email, password, name, username.toLowerCase());
+          await authService.verifyOtp(userId, otp.trim());
           toast({ title: "Email verified", description: "You can now sign in." });
           setOtpMode(false);
           setMode("signin");
+          setOtp("");
         } catch (err: any) {
           toast({ title: "Verification failed", description: err.response?.data?.message || "Invalid OTP" });
         }
@@ -75,13 +77,15 @@ export default function Auth() {
           const { data, error } = await signUp(parsed.data.email, parsed.data.password, parsed.data.name, parsed.data.username.toLowerCase());
           if (error) throw error;
 
-          // data is { success: true, data: { userId, email }, message: "..." }
-          if (data && data.data && data.data.userId) {
-            setUserId(data.data.userId);
+          // Backend may return { userId } or { data: { userId } }
+          const uid = data?.data?.userId ?? data?.userId ?? data?.user?.id;
+          if (uid != null) {
+            setUserId(Number(uid));
             setOtpMode(true);
-            toast({ title: "OTP Sent", description: "Please check your email for the verification code." });
+            toast({ title: "OTP sent", description: "Check your email for the verification code." });
           } else {
-            throw new Error("Invalid response from server");
+            toast({ title: "Account created", description: "You can now sign in." });
+            setMode("signin");
           }
         } catch (err: any) {
           toast({ title: "Sign up failed", description: err.response?.data?.message || err.message || "Could not create account" });
