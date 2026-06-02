@@ -1,94 +1,50 @@
-/**
- * Real backend HTTP client.
- * All calls go through the `api-proxy` edge function so cookies + CORS work
- * from both preview and production builds.
- */
+import axios from "axios";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-export const API_BASE = `${SUPABASE_URL}/functions/v1/api-proxy`;
+const API_URL = import.meta.env.VITE_API_URL || "https://typing-academy-api.onrender.com/api";
 
-export class ApiError extends Error {
-  status: number;
-  code?: string;
-  constructor(status: number, message: string, code?: string) {
-    super(message);
-    this.status = status;
-    this.code = code;
-    this.name = "ApiError";
+const api = axios.create({
+  baseURL: API_URL,
+  withCredentials: true,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
+// Request interceptor to add auth token
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("auth_token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
-}
+  return config;
+});
 
-type RequestOpts = {
-  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-  body?: unknown;
-  query?: Record<string, string | number | undefined>;
-  /** When true, return raw Response (e.g. for multipart). */
-  raw?: boolean;
-  /** Disable automatic refresh on 401. */
-  noRefresh?: boolean;
-};
+// Response interceptor for error handling and token refresh
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
 
-async function refreshOnce(): Promise<boolean> {
-  try {
-    const r = await fetch(`${API_BASE}/auth/refresh`, {
-      method: "POST",
-      credentials: "include",
-    });
-    return r.ok;
-  } catch {
-    return false;
-  }
-}
-
-export async function api<T = unknown>(path: string, opts: RequestOpts = {}): Promise<T> {
-  const { method = "GET", body, query, raw, noRefresh } = opts;
-  const qs = query
-    ? "?" +
-      Object.entries(query)
-        .filter(([, v]) => v !== undefined && v !== null && v !== "")
-        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
-        .join("&")
-    : "";
-
-  const headers: Record<string, string> = {};
-  let payload: BodyInit | undefined;
-  if (body !== undefined) {
-    if (body instanceof FormData) {
-      payload = body;
-    } else {
-      headers["Content-Type"] = "application/json";
-      payload = JSON.stringify(body);
+    // If 401 and not already retrying
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+      try {
+        const { data } = await axios.post(`${API_URL}/auth/refresh`, {}, { withCredentials: true });
+        // The new token should be in the cookie/response depending on backend implementation
+        // If it's in the response data:
+        if (data.accessToken) {
+            localStorage.setItem("auth_token", data.accessToken);
+            api.defaults.headers.common["Authorization"] = `Bearer ${data.accessToken}`;
+            return api(originalRequest);
+        }
+      } catch (refreshError) {
+        localStorage.removeItem("auth_token");
+        // window.location.href = "/auth";
+        return Promise.reject(refreshError);
+      }
     }
+    return Promise.reject(error);
   }
+);
 
-  const doFetch = () =>
-    fetch(`${API_BASE}${path}${qs}`, {
-      method,
-      credentials: "include",
-      headers,
-      body: payload,
-    });
-
-  let res = await doFetch();
-  if (res.status === 401 && !noRefresh && path !== "/auth/login" && path !== "/auth/refresh") {
-    const ok = await refreshOnce();
-    if (ok) res = await doFetch();
-  }
-
-  if (raw) return res as unknown as T;
-
-  const text = await res.text();
-  let json: any = null;
-  try { json = text ? JSON.parse(text) : null; } catch { json = { raw: text }; }
-
-  if (!res.ok) {
-    const msg = json?.error?.message ?? json?.message ?? `${res.status} ${res.statusText}`;
-    const code = json?.error?.code;
-    throw new ApiError(res.status, msg, code);
-  }
-  // Many endpoints wrap in { success, data }
-  if (json && typeof json === "object" && "data" in json && Object.keys(json).every((k) => ["data", "success", "meta", "message"].includes(k))) {
-    return json.data as T;
-  }
-  return json as T;
-}
+export default api;

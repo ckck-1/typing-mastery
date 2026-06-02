@@ -1,80 +1,138 @@
-import { createContext, ReactNode, useContext, useEffect, useState, useCallback } from "react";
-import { authService, type AuthUser } from "@/services/authService";
-import { setProgressionUser } from "@/services/progression.service";
+import {
+  createContext,
+  ReactNode,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
+
+import { authService } from "@/services/authService";
+
+type User = {
+  id: string;
+  email: string;
+  role: string;
+};
+
+type Session = {
+  user: User;
+  token: string;
+  expiresAt: string;
+};
 
 type AuthCtx = {
-  user: AuthUser | null;
+  user: User | null;
+  session: Session | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, username: string) =>
-    Promise<{ error: Error | null; userId?: number }>;
-  verifyOtp: (userId: number, otp: string) => Promise<{ error: Error | null }>;
+
+  signIn: (
+    email: string,
+    password: string
+  ) => Promise<{ error: Error | null }>;
+
+  signUp: (
+    email: string,
+    password: string,
+    name: string,
+    username: string
+  ) => Promise<{ data?: any; error: Error | null }>;
+
   signOut: () => Promise<void>;
-  refresh: () => Promise<void>;
 };
 
 const Ctx = createContext<AuthCtx | undefined>(undefined);
 
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<AuthUser | null>(null);
+export const AuthProvider = ({
+  children,
+}: {
+  children: ReactNode;
+}) => {
+  const [session, setSession] = useState<Session | null>(null);
+
+  const [user, setUser] = useState<User | null>(null);
+
   const [loading, setLoading] = useState(true);
 
-  const sync = useCallback(async () => {
-    const u = await authService.me();
-    setUser(u);
-    setProgressionUser(u ? String(u.id) : null);
+  useEffect(() => {
+    const boot = async () => {
+      const s = await authService.getSession();
+
+      // Map auth service response to match our Session interface structure
+      if (s) {
+        setSession({
+          user: s.user,
+          token: s.accessToken,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // Generate 24h expiry timestamp since service response doesn't include expiresAt
+        });
+      } else {
+        setSession(null);
+      }
+      setUser(s?.user ?? null);
+
+      setLoading(false);
+    };
+
+    boot();
   }, []);
 
-  useEffect(() => {
-    sync().finally(() => setLoading(false));
-  }, [sync]);
-
-  const signIn: AuthCtx["signIn"] = async (email, password) => {
+  const signIn: AuthCtx["signIn"] = async (
+    email,
+    password
+  ) => {
     try {
-      const u = await authService.login(email, password);
-      setUser(u);
-      setProgressionUser(String(u.id));
+      const session = await authService.signIn(
+        email,
+        password
+      );
+
+      setSession(session);
+      setUser(session.user);
+
       return { error: null };
-    } catch (e) {
-      return { error: e as Error };
+    } catch (err) {
+      return { error: err as Error };
     }
   };
 
-  const signUp: AuthCtx["signUp"] = async (email, password, username) => {
+  const signUp: AuthCtx["signUp"] = async (
+    email,
+    password,
+    name,
+    username
+  ) => {
     try {
-      const { userId } = await authService.register(email, password, username);
-      return { error: null, userId };
-    } catch (e) {
-      return { error: e as Error };
-    }
-  };
+      const res = await authService.signUp(
+        email,
+        password,
+        name,
+        username
+      );
 
-  const verifyOtp: AuthCtx["verifyOtp"] = async (userId, otp) => {
-    try {
-      const u = await authService.verifyOtp(userId, otp);
-      if (u) {
-        setUser(u);
-        setProgressionUser(String(u.id));
-      } else {
-        // OTP succeeded but no session yet — let the user sign in.
-        await sync();
-      }
-      return { error: null };
-    } catch (e) {
-      return { error: e as Error };
+      // Registration doesn't log the user in yet, it requires OTP
+      return { data: res, error: null };
+    } catch (err) {
+      return { error: err as Error };
     }
   };
 
   const signOut = async () => {
-    await authService.logout();
+    await authService.signOut();
+
+    setSession(null);
     setUser(null);
-    setProgressionUser(null);
   };
 
-  const refresh = async () => { await sync(); };
-
   return (
-    <Ctx.Provider value={{ user, loading, signIn, signUp, verifyOtp, signOut, refresh }}>
+    <Ctx.Provider
+      value={{
+        user,
+        session,
+        loading,
+        signIn,
+        signUp,
+        signOut,
+      }}
+    >
       {children}
     </Ctx.Provider>
   );
@@ -82,6 +140,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 export const useAuth = () => {
   const v = useContext(Ctx);
-  if (!v) throw new Error("useAuth must be used inside AuthProvider");
+
+  if (!v) {
+    throw new Error(
+      "useAuth must be used inside AuthProvider"
+    );
+  }
+
   return v;
 };

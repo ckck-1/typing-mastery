@@ -14,7 +14,7 @@ export default function Practice() {
   const { data: passage, isLoading, isError, refetch, isFetching } = useRandomPassage();
   const createSession = useCreateSession();
 
-  const text = passage?.text ?? "";
+  const text = passage?.contentText ?? "";
 
   const [input, setInput] = useState("");
   const [duration, setDuration] = useState(60);
@@ -72,9 +72,9 @@ export default function Practice() {
                 description: progressionService.achievementLabel(res.newAchievements[0]),
               });
             }
-          } catch {}
+          } catch { }
         },
-        onError: (e: any) => toast({ title: "Could not save session", description: e?.message ?? "Network error" }),
+        onError: (e: any) => toast({ title: "Could not save session", description: e?.response?.data?.message ?? e?.message ?? "Network error" }),
       },
     );
   }, [finished, passage, stats, duration, createSession]);
@@ -133,9 +133,8 @@ export default function Practice() {
                 <button
                   key={d}
                   onClick={() => { setDuration(d); reset(); }}
-                  className={`px-3 py-1 text-[12px] rounded transition-colors ${
-                    duration === d ? "bg-background text-foreground shadow-soft" : "text-muted-foreground hover:text-foreground"
-                  }`}
+                  className={`px-3 py-1 text-[12px] rounded transition-colors ${duration === d ? "bg-background text-foreground shadow-soft" : "text-muted-foreground hover:text-foreground"
+                    }`}
                 >
                   {d}s
                 </button>
@@ -179,8 +178,8 @@ export default function Practice() {
             {!isLoading && !isError && passage && (
               <>
                 <div className="flex items-center justify-between mb-6 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                  <span>{passage.source ?? "Passage"}</span>
-                  {passage.language && <span>· {passage.language}</span>}
+                  <span>{passage.source}</span>
+                  <span>· {passage.language}</span>
                 </div>
                 <input
                   ref={inputRef}

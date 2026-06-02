@@ -1,53 +1,43 @@
-import { api } from "@/lib/api";
+import api from "@/lib/api";
 
 export type Lesson = {
-  id: number;
+  id: string;
   title: string;
-  text: string;
-  keys: string[];
+  description: string;
+  content: string;
   order: number;
+  category: string;
 };
 
-function normalize(raw: any, idx = 0): Lesson {
-  return {
-    id: raw.id ?? idx,
-    title: raw.title ?? `Lesson ${idx + 1}`,
-    text: raw.contentText ?? raw.text ?? raw.content ?? "",
-    keys: Array.isArray(raw.keys) ? raw.keys : typeof raw.keys === "string" ? raw.keys.split("") : [],
-    order: raw.order ?? raw.position ?? idx,
-  };
-}
+export type LessonProgress = {
+  lessonId: string;
+  completed: boolean;
+  completedAt: string;
+};
 
 export const lessonsService = {
-  async list(): Promise<Lesson[]> {
-    const raw = await api<any>("/lessons");
-    const rows: any[] = Array.isArray(raw) ? raw : raw?.lessons ?? raw?.data ?? [];
-    return rows.map(normalize).sort((a, b) => a.order - b.order);
+  list: async (): Promise<Lesson[]> => {
+    const res = await api.get("/lessons");
+    return res.data;
   },
 
-  async get(id: number): Promise<Lesson> {
-    const raw = await api<any>(`/lessons/${id}`);
-    return normalize(raw);
+  get: async (id: string): Promise<Lesson> => {
+    const res = await api.get(`/lessons/${id}`);
+    return res.data;
   },
 
-  async complete(id: number): Promise<void> {
-    await api(`/lessons/${id}/complete`, { method: "POST" });
+  complete: async (id: string) => {
+    const res = await api.post(`/lessons/${id}/complete`);
+    return res.data;
   },
 
-  async progress(): Promise<Array<{ lessonId: number; completedAt: string }>> {
-    try {
-      const raw = await api<any>("/lessons/progress");
-      return Array.isArray(raw) ? raw : raw?.data ?? [];
-    } catch {
-      return [];
-    }
+  getProgress: async (): Promise<LessonProgress[]> => {
+    const res = await api.get("/lessons/progress");
+    return res.data;
   },
 
-  async fingerMap(): Promise<Record<string, string>> {
-    try {
-      return await api<Record<string, string>>("/lessons/finger-map");
-    } catch {
-      return {};
-    }
-  },
+  getFingerMap: async () => {
+    const res = await api.get("/lessons/finger-map");
+    return res.data;
+  }
 };

@@ -1,49 +1,35 @@
-import { api } from "@/lib/api";
+import api from "@/lib/api";
 
 export type Profile = {
-  id: number;
+  id: string;
+  name: string;
   username: string;
-  email?: string;
-  avatarUrl?: string | null;
   joinedAt: string;
-  emailNotificationsEnabled?: boolean;
+  email?: string;
 };
 
-function normalize(raw: any): Profile {
-  return {
-    id: raw.id,
-    username: raw.username,
-    email: raw.email,
-    avatarUrl: raw.avatarUrl ?? raw.avatar_url ?? null,
-    joinedAt: raw.createdAt ?? raw.created_at ?? raw.joinedAt ?? new Date().toISOString(),
-    emailNotificationsEnabled: raw.emailNotificationsEnabled,
-  };
-}
-
 export const profileService = {
-  async me(): Promise<Profile> {
-    const raw = await api<any>("/profile/me");
-    return normalize(raw);
+  async me(): Promise<Profile | null> {
+    try {
+      const res = await api.get("/profile/me");
+      return {
+        id: res.data.id,
+        name: res.data.name || res.data.username,
+        username: res.data.username,
+        joinedAt: res.data.joinedAt || res.data.createdAt,
+        email: res.data.email,
+      };
+    } catch (e) {
+      return null;
+    }
   },
 
-  async update(patch: { username?: string; emailNotificationsEnabled?: boolean }): Promise<Profile> {
-    const raw = await api<any>("/profile/me", { method: "PUT", body: patch });
-    return normalize(raw);
-  },
-
-  async getPublic(userId: number): Promise<Profile> {
-    const raw = await api<any>(`/profile/${userId}`);
-    return normalize(raw);
-  },
-
-  async uploadAvatar(file: File): Promise<Profile> {
-    const fd = new FormData();
-    fd.append("avatar", file);
-    const raw = await api<any>("/profile/avatar", { method: "POST", body: fd });
-    return normalize(raw);
-  },
-
-  async deleteAccount(): Promise<void> {
-    await api("/profile/me", { method: "DELETE" });
+  async update(
+    patch: Partial<Pick<Profile, "name" | "username">>
+  ): Promise<Profile> {
+    // The Swagger doesn't show a direct profile update endpoint, 
+    // but typically it's PUT/PATCH /profile/me
+    const res = await api.patch("/profile/me", patch);
+    return res.data;
   },
 };

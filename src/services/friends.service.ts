@@ -1,66 +1,57 @@
-import { api } from "@/lib/api";
+import api from "@/lib/api";
 
 export type FriendProfile = {
-  id: number;
+  id: string;
+  name: string;
   username: string;
-  name?: string;
-  avatarUrl?: string | null;
-  joined_at?: string;
+  joined_at: string;
 };
 
 export type PendingRequest = FriendProfile & {
-  requestId: number;
+  friendshipId: string;
   createdAt: string;
 };
 
-function pickProfile(raw: any): FriendProfile {
-  const u = raw.user ?? raw.friend ?? raw.sender ?? raw.profile ?? raw;
-  return {
-    id: u.id ?? raw.userId ?? raw.friendId,
-    username: u.username ?? "anonymous",
-    name: u.name,
-    avatarUrl: u.avatarUrl ?? u.avatar_url ?? null,
-    joined_at: u.createdAt ?? u.created_at,
-  };
-}
-
 export const friendsService = {
-  async search(q: string): Promise<FriendProfile[]> {
-    if (!q.trim()) return [];
-    const raw = await api<any>("/users/search", { query: { q } });
-    const rows: any[] = Array.isArray(raw) ? raw : raw?.users ?? raw?.data ?? [];
-    return rows.map(pickProfile);
+  async search(query: string): Promise<FriendProfile[]> {
+    const res = await api.get(`/users/search?q=${query}`);
+    return res.data;
   },
 
   async listFriends(): Promise<FriendProfile[]> {
-    const raw = await api<any>("/friends");
-    const rows: any[] = Array.isArray(raw) ? raw : raw?.friends ?? raw?.data ?? [];
-    return rows.map(pickProfile);
+    const res = await api.get("/friends");
+    return res.data;
   },
 
   async listPending(): Promise<PendingRequest[]> {
-    const raw = await api<any>("/friends/requests");
-    const rows: any[] = Array.isArray(raw) ? raw : raw?.requests ?? raw?.data ?? [];
-    return rows.map((r) => ({
-      ...pickProfile(r),
-      requestId: r.id ?? r.requestId,
-      createdAt: r.createdAt ?? r.created_at ?? new Date().toISOString(),
+    const res = await api.get("/friends/requests");
+    return res.data.map((req: any) => ({
+        friendshipId: req.id,
+        id: req.senderId,
+        name: req.senderName || req.senderUsername,
+        username: req.senderUsername,
+        joined_at: req.createdAt,
+        createdAt: req.createdAt
     }));
   },
 
-  async sendRequest(receiverId: number): Promise<void> {
-    await api("/friends/request", { method: "POST", body: { receiverId } });
+  async add(receiverId: string) {
+    const res = await api.post("/friends/request", { receiverId });
+    return res.data;
   },
 
-  async accept(requestId: number): Promise<void> {
-    await api(`/friends/request/${requestId}`, { method: "PUT", body: { action: "accept" } });
+  async accept(requestId: string) {
+    const res = await api.put(`/friends/request/${requestId}`, { action: "accept" });
+    return res.data;
   },
 
-  async decline(requestId: number): Promise<void> {
-    await api(`/friends/request/${requestId}`, { method: "PUT", body: { action: "decline" } });
+  async decline(requestId: string) {
+    const res = await api.put(`/friends/request/${requestId}`, { action: "decline" });
+    return res.data;
   },
 
-  async remove(friendId: number): Promise<void> {
-    await api(`/friends/${friendId}`, { method: "DELETE" });
+  async remove(friendId: string) {
+    const res = await api.delete(`/friends/${friendId}`);
+    return res.data;
   },
 };

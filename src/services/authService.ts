@@ -1,80 +1,76 @@
-import { api, ApiError } from "@/lib/api";
+import api from "@/lib/api";
 
-export type AuthUser = {
-  id: number;
+export type User = {
+  id: string;
   email: string;
   username: string;
-  role?: string;
-  emailVerified?: boolean;
-  avatarUrl?: string | null;
+  role: string;
 };
 
-type LoginResponse = AuthUser | { user: AuthUser };
-type RegisterResponse = { userId: number } | { user: AuthUser };
-
-function pickUser(payload: any): AuthUser {
-  if (!payload) throw new Error("Empty response");
-  if (payload.user) return payload.user as AuthUser;
-  if (payload.id && (payload.email || payload.username)) return payload as AuthUser;
-  if (payload.data?.user) return payload.data.user as AuthUser;
-  throw new Error("Unexpected auth response");
-}
+export type Session = {
+  user: User;
+  accessToken: string;
+};
 
 export const authService = {
-  async login(email: string, password: string): Promise<AuthUser> {
-    const res = await api<LoginResponse>("/auth/login", {
-      method: "POST",
-      body: { email, password },
+  signIn: async (email: string, password: string) => {
+    const res = await api.post("/auth/login", { email, password });
+    if (res.data.accessToken) {
+      localStorage.setItem("auth_token", res.data.accessToken);
+    }
+    return res.data;
+  },
+
+  signUp: async (
+    email: string,
+    password: string,
+    name: string,
+    username: string
+  ) => {
+    // Note: backend expects { email, password, username }
+    const res = await api.post("/auth/register", {
+      email,
+      password,
+      username,
     });
-    return pickUser(res);
+    return res.data;
   },
 
-  async register(email: string, password: string, username: string): Promise<{ userId: number }> {
-    const res = await api<RegisterResponse>("/auth/register", {
-      method: "POST",
-      body: { email, password, username },
-    });
-    if ((res as any).userId) return { userId: (res as any).userId };
-    if ((res as any).user?.id) return { userId: (res as any).user.id };
-    throw new Error("Unexpected register response");
-  },
-
-  async verifyOtp(userId: number, otp: string): Promise<AuthUser | null> {
-    const res = await api<any>("/auth/verify-otp", {
-      method: "POST",
-      body: { userId, otp },
-    });
-    try { return pickUser(res); } catch { return null; }
-  },
-
-  async logout(): Promise<void> {
-    try { await api("/auth/logout", { method: "POST" }); } catch {}
-  },
-
-  async refresh(): Promise<boolean> {
+  signOut: async () => {
     try {
-      await api("/auth/refresh", { method: "POST", noRefresh: true });
-      return true;
-    } catch {
-      return false;
+      await api.post("/auth/logout");
+    } finally {
+      localStorage.removeItem("auth_token");
     }
   },
 
-  async me(): Promise<AuthUser | null> {
+  getSession: async () => {
+    const token = localStorage.getItem("auth_token");
+    if (!token) return null;
+    
     try {
-      const res = await api<any>("/profile/me");
-      return pickUser(res);
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401) return null;
-      throw e;
+      // The backend doesn't seem to have a /auth/me, but we can use /profile/me
+      const res = await api.get("/profile/me");
+      return {
+        user: res.data,
+        accessToken: token,
+      };
+    } catch (err) {
+      localStorage.removeItem("auth_token");
+      return null;
     }
   },
 
-  async requestPasswordReset(email: string): Promise<void> {
-    await api("/auth/reset-password-request", { method: "POST", body: { email } });
+  refresh: async () => {
+    const res = await api.post("/auth/refresh");
+    if (res.data.accessToken) {
+      localStorage.setItem("auth_token", res.data.accessToken);
+    }
+    return res.data;
   },
 
-  async resetPassword(token: string, password: string): Promise<void> {
-    await api("/auth/reset-password", { method: "POST", body: { token, password } });
-  },
+  verifyOtp: async (userId: number, otp: string) => {
+    const res = await api.post("/auth/verify-otp", { userId, otp });
+    return res.data;
+  }
 };
