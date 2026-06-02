@@ -44,7 +44,7 @@ export const useProfile = () =>
 export const useUpdateProfile = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (patch: Partial<Pick<Profile, "username" | "emailNotificationsEnabled">>) =>
+    mutationFn: (patch: Partial<Pick<Profile, "username" | "name">>) =>
       profileService.update(patch),
     onSuccess: (data) => qc.setQueryData(["profile"], data),
   });

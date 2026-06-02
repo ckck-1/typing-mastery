@@ -39,7 +39,7 @@ export default function Teach() {
   }
 
   const lesson = lessons[Math.min(step, lessons.length - 1)];
-  const active = new Set(lesson.keys);
+  const active = new Set(lesson.keys ?? []);
 
   return (
     <Layout>
@@ -63,7 +63,7 @@ export default function Teach() {
           <article className="bg-card hairline border rounded-md p-10 shadow-sheet">
             <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground mb-4">{lesson.title.split(" — ")[0]}</div>
             <h2 className="font-serif text-2xl mb-6 leading-snug">{lesson.title.split(" — ")[1]}</h2>
-            <p className="text-[15px] leading-[1.8] text-foreground/85 font-serif">{lesson.text}</p>
+            <p className="text-[15px] leading-[1.8] text-foreground/85 font-serif">{lesson.text ?? lesson.content}</p>
             <div className="mt-10 flex justify-between">
               <button
                 disabled={step === 0}

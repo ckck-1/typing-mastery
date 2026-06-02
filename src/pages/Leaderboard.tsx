@@ -5,12 +5,12 @@ import { useLeaderboard } from "@/hooks/api";
 import type { LeaderboardScope } from "@/services/leaderboard.service";
 
 const TABS: { label: string; scope: LeaderboardScope }[] = [
-  { label: "Worldwide", scope: "global" },
+  { label: "Worldwide", scope: "worldwide" },
   { label: "Friends", scope: "friends" },
 ];
 
 export default function Leaderboard() {
-  const [scope, setScope] = useState<LeaderboardScope>("global");
+  const [scope, setScope] = useState<LeaderboardScope>("worldwide");
   const { data, isLoading, isError, refetch, isFetching } = useLeaderboard(scope);
 
   return (
