@@ -3,10 +3,12 @@ import api from "@/lib/api";
 export type Lesson = {
   id: string;
   title: string;
-  description: string;
-  content: string;
-  order: number;
-  category: string;
+  description?: string;
+  content?: string;
+  text?: string;
+  keys?: string[];
+  order?: number;
+  category?: string;
 };
 
 export type LessonProgress = {
