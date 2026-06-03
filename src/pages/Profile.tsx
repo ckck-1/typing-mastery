@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Layout } from "@/components/academy/Layout";
 import { ErrorNote, LoadingLine, SkeletonBlock } from "@/components/academy/States";
-import { useSessionStats } from "@/hooks/api";
+import { useTestHistory } from "@/hooks/api";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
 import { friendsService, type FriendProfile, type PendingRequest } from "@/services/friends.service";
@@ -9,7 +9,9 @@ import { profileService, type Profile } from "@/services/profile.service";
 
 export default function ProfilePage() {
   const { user, signOut } = useAuth();
-  const { data: stats } = useSessionStats();
+  
+  // Use our real hook to fetch the complete user performance log arrays
+  const { data: historyData, isLoading: historyLoading } = useTestHistory();
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -27,6 +29,24 @@ export default function ProfilePage() {
   const [searching, setSearching] = useState(false);
 
   const friendIds = useMemo(() => new Set(friends.map((f) => f.id)), [friends]);
+
+  // Compute stats on the fly from the test history data log array
+  const stats = useMemo(() => {
+    const list = Array.isArray(historyData) ? historyData : [];
+    if (list.length === 0) {
+      return { bestWpm: "—", avgWpm: "—", avgAccuracy: "—", count: 0 };
+    }
+
+    const count = list.length;
+    const wpms = list.map((item) => Math.round(parseFloat(item.wpm)));
+    const accuracies = list.map((item) => parseFloat(item.accuracy));
+
+    const bestWpm = Math.max(...wpms);
+    const avgWpm = Math.round(wpms.reduce((a, b) => a + b, 0) / count);
+    const avgAccuracy = Math.round(accuracies.reduce((a, b) => a + b, 0) / count);
+
+    return { bestWpm, avgWpm, avgAccuracy, count };
+  }, [historyData]);
 
   const load = async () => {
     if (!user) return;
@@ -118,14 +138,15 @@ export default function ProfilePage() {
   };
 
   if (error) return <Layout><div className="container py-12 max-w-2xl"><ErrorNote message={error} onRetry={load} /></div></Layout>;
-  if (loading || !profile) return <Layout><div className="container py-16 max-w-2xl"><SkeletonBlock className="h-80 w-full" /></div></Layout>;
+  // Combine profile loading states with the async test statistics loading status safely
+  if (loading || historyLoading || !profile) return <Layout><div className="container py-16 max-w-2xl"><SkeletonBlock className="h-80 w-full" /></div></Layout>;
 
   const displayName = profile.username;
   const cells = [
-    { label: "Best WPM", value: stats?.bestWpm ?? "—" },
-    { label: "Average WPM", value: stats?.avgWpm ?? "—" },
-    { label: "Accuracy", value: stats?.avgAccuracy != null ? `${stats.avgAccuracy}%` : "—" },
-    { label: "Tests", value: stats?.count ?? 0 },
+    { label: "Best WPM", value: stats.bestWpm },
+    { label: "Average WPM", value: stats.avgWpm },
+    { label: "Accuracy", value: stats.avgAccuracy !== "—" ? `${stats.avgAccuracy}%` : "—" },
+    { label: "Tests", value: stats.count },
     { label: "Friends", value: friends.length },
     { label: "Member", value: new Date(profile.joinedAt).getFullYear() },
   ];

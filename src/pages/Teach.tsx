@@ -24,10 +24,13 @@ export default function Teach() {
 
   const lesson: Lesson | undefined = safeLessons[safeStep];
 
-  // Dynamically compute active keys from the lesson content text since backend omitted it
+  // Dynamically compute active keys from the lesson content text
   const activeKeys = useMemo<Set<string>>(() => {
     if (!lesson) return new Set<string>();
-    const textContent = lesson.content_text ?? "";
+    
+    // Safely bypass strict typing to check all possible text payload keys
+    const textContent = (lesson as any).content_text ?? (lesson as any).text ?? (lesson as any).content ?? "";
+    
     // Remove blank spaces, convert to uppercase, split characters into a unique set
     const sanitizedChars = textContent.replace(/\s+/g, "").toUpperCase().split("");
     return new Set<string>(sanitizedChars);
@@ -44,7 +47,7 @@ export default function Teach() {
     );
   }
 
-  // 2. Loading layout state (Isolated strictly to network request status)
+  // 2. Loading layout state
   if (isLoading) {
     return (
       <Layout>
@@ -75,14 +78,14 @@ export default function Teach() {
     <Layout>
       <div className="container py-12">
         <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground mb-3">
-          Teaching mode — Lesson {lesson.order_index ?? safeStep + 1}
+          Teaching mode — Lesson {(lesson as any).order_index ?? safeStep + 1}
         </div>
 
         <h1 className="font-serif text-3xl mb-10 tracking-tight">
           A book for the hands
         </h1>
 
-        {/* Step dots navigation layout navigation elements */}
+        {/* Step dots navigation layout */}
         <div className="flex items-center gap-3 mb-12">
           {safeLessons.map((_, i) => (
             <button
@@ -110,11 +113,11 @@ export default function Teach() {
             </div>
 
             <h2 className="font-serif text-xl mb-6 leading-snug text-muted-foreground font-normal normal-case">
-              {lesson.description}
+              {(lesson as any).description}
             </h2>
 
             <p className="text-[16px] leading-[1.8] text-foreground bg-muted/30 border p-4 rounded font-mono tracking-wide break-all selection:bg-primary selection:text-primary-foreground">
-              {lesson.content_text}
+              {(lesson as any).content_text ?? (lesson as any).text ?? (lesson as any).content}
             </p>
 
             <div className="mt-10 flex justify-between">

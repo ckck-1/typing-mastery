@@ -1,15 +1,17 @@
 import { Layout } from "@/components/academy/Layout";
 import { ErrorNote, SkeletonBlock } from "@/components/academy/States";
-import { useSessions, useSessionStats } from "@/hooks/api";
+import { useTestHistory } from "@/hooks/api";
 import { useAuth } from "@/hooks/useAuth";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { profileService, type Profile } from "@/services/profile.service";
 import { progressionService, type Progression, xpProgress } from "@/services/progression.service";
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const stats = useSessionStats();
-  const sessions = useSessions(8);
+  
+  // Use our real hook containing the user's unwrapped test results
+  const { data: historyData, isLoading: historyLoading, isError: historyError, refetch } = useTestHistory();
+  
   const [profile, setProfile] = useState<Profile | null>(null);
   const [progression, setProgression] = useState<Progression | null>(null);
 
@@ -17,19 +19,51 @@ export default function Dashboard() {
     if (!user) return;
     profileService.me().then(setProfile).catch(() => {});
     progressionService.get().then(setProgression).catch(() => {});
-  }, [user?.id, stats.dataUpdatedAt]);
+  }, [user?.id]);
 
-  const loading = stats.isLoading || sessions.isLoading;
-  const error = stats.error || sessions.error;
+  // Compute stats on the fly from the test history data
+  const stats = useMemo(() => {
+    const list = Array.isArray(historyData) ? historyData : [];
+    if (list.length === 0) {
+      return {
+        bestWpm: "—",
+        avgAccuracy: "—",
+        avgWpm: "—",
+        count: 0,
+        series: [] as number[],
+      };
+    }
+
+    const count = list.length;
+    
+    // Parse numeric structures cleanly (handles both stringified decimals or pure numbers)
+    const wpms = list.map((item) => Math.round(parseFloat(item.wpm)));
+    const accuracies = list.map((item) => parseFloat(item.accuracy));
+
+    const bestWpm = Math.max(...wpms);
+    const avgWpm = Math.round(wpms.reduce((a, b) => a + b, 0) / count);
+    const avgAccuracy = Math.round(accuracies.reduce((a, b) => a + b, 0) / count);
+
+    // The progression graph draws from oldest to newest records
+    const series = [...wpms].reverse();
+
+    return { bestWpm, avgAccuracy, avgWpm, count, series };
+  }, [historyData]);
+
+  // Slice the newest 8 items for the recent activity panel listing
+  const recentSessions = useMemo(() => {
+    const list = Array.isArray(historyData) ? historyData : [];
+    return list.slice(0, 8);
+  }, [historyData]);
 
   const cards = [
-    { label: "Best WPM", value: stats.data?.bestWpm ?? "—", note: "Personal record" },
-    { label: "Avg accuracy", value: stats.data ? `${stats.data.avgAccuracy}%` : "—", note: `Across ${stats.data?.count ?? 0} sessions` },
-    { label: "Tests completed", value: stats.data?.count ?? "—", note: "Lifetime" },
-    { label: "Avg WPM", value: stats.data?.avgWpm ?? "—", note: "All sessions" },
+    { label: "Best WPM", value: stats.bestWpm, note: "Personal record" },
+    { label: "Avg accuracy", value: stats.count > 0 ? `${stats.avgAccuracy}%` : "—", note: `Across ${stats.count} sessions` },
+    { label: "Tests completed", value: stats.count, note: "Lifetime" },
+    { label: "Avg WPM", value: stats.avgWpm, note: "All sessions" },
   ];
 
-  const series = stats.data?.series ?? [];
+  const series = stats.series;
   const max = series.length ? Math.max(...series) : 1;
   const min = series.length ? Math.min(...series) : 0;
 
@@ -48,11 +82,11 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {error && (
+        {historyError && (
           <div className="mb-8">
             <ErrorNote
               message="Could not load dashboard data."
-              onRetry={() => { stats.refetch(); sessions.refetch(); }}
+              onRetry={() => refetch()}
             />
           </div>
         )}
@@ -61,7 +95,7 @@ export default function Dashboard() {
           {cards.map((s) => (
             <div key={s.label} className="bg-card p-7">
               <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground mb-4">{s.label}</div>
-              {loading ? (
+              {historyLoading ? (
                 <SkeletonBlock className="h-9 w-20" />
               ) : (
                 <div className="font-serif text-4xl tracking-tight">{s.value}</div>
@@ -122,7 +156,7 @@ export default function Dashboard() {
               )}
             </div>
             <div className="relative h-48">
-              {loading ? (
+              {historyLoading ? (
                 <SkeletonBlock className="h-full w-full" />
               ) : series.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-[12px] text-muted-foreground">
@@ -152,16 +186,16 @@ export default function Dashboard() {
 
           <section className="bg-card hairline border rounded-md p-8 shadow-sheet">
             <h2 className="font-serif text-lg mb-6">Recent activity</h2>
-            {loading && (
+            {historyLoading && (
               <div className="space-y-4">
                 <SkeletonBlock className="h-10 w-full" />
                 <SkeletonBlock className="h-10 w-full" />
                 <SkeletonBlock className="h-10 w-full" />
               </div>
             )}
-            {!loading && (
+            {!historyLoading && (
               <ul className="space-y-5">
-                {sessions.data?.map((a) => (
+                {recentSessions.map((a) => (
                   <li key={a.id} className="flex justify-between items-start gap-4 pb-5 border-b border-border/60 last:border-0 last:pb-0">
                     <div>
                       <div className="text-[13px] text-foreground">{a.duration}s session</div>
@@ -170,12 +204,12 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <div className="text-right tabular-nums">
-                      <div className="text-[13px] text-foreground">{a.wpm}</div>
-                      <div className="text-[11px] text-muted-foreground">{a.accuracy}%</div>
+                      <div className="text-[13px] text-foreground">{Math.round(parseFloat(a.wpm))}</div>
+                      <div className="text-[11px] text-muted-foreground">{Math.round(parseFloat(a.accuracy))}%</div>
                     </div>
                   </li>
                 ))}
-                {sessions.data?.length === 0 && (
+                {recentSessions.length === 0 && (
                   <li className="text-[12px] text-muted-foreground">No sessions yet — complete a typing test.</li>
                 )}
               </ul>

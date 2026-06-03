@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Layout } from "@/components/academy/Layout";
 import { ErrorNote, SkeletonBlock } from "@/components/academy/States";
 import { useLeaderboard } from "@/hooks/api";
@@ -11,7 +11,18 @@ const TABS: { label: string; scope: LeaderboardScope }[] = [
 
 export default function Leaderboard() {
   const [scope, setScope] = useState<LeaderboardScope>("worldwide");
+  
+  // Hook now perfectly accepts the scope string argument without type compilation errors
   const { data, isLoading, isError, refetch, isFetching } = useLeaderboard(scope);
+
+  // Compute leaderboard layout data by assigning true sequential ranks 
+  const rankedEntries = useMemo(() => {
+    const list = Array.isArray(data) ? data : [];
+    return list.map((entry, index) => ({
+      ...entry,
+      rank: index + 1, // Row rank matching array hierarchy index positioning
+    }));
+  }, [data]);
 
   return (
     <Layout>
@@ -56,11 +67,11 @@ export default function Leaderboard() {
               </div>
             )}
 
-            {!isLoading && data?.length === 0 && (
+            {!isLoading && rankedEntries.length === 0 && (
               <div className="p-10 text-center text-[13px] text-muted-foreground">No entries for this period.</div>
             )}
 
-            {!isLoading && data?.map((r: any) => {
+            {!isLoading && rankedEntries.map((r) => {
               const top = r.rank <= 3;
               return (
                 <div
@@ -79,10 +90,14 @@ export default function Leaderboard() {
                     <span className="text-[14px] text-foreground">@{r.username}</span>
                     {r.rank === 1 && <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground ml-2">· Laureate</span>}
                   </div>
-                  <div className="col-span-2 text-right tabular-nums text-[14px] text-foreground">{r.wpm}</div>
-                  <div className="col-span-2 text-right tabular-nums text-[13px] text-muted-foreground">{r.accuracy}%</div>
+                  <div className="col-span-2 text-right tabular-nums text-[14px] text-foreground">
+                    {Math.round(parseFloat(r.wpm as string))}
+                  </div>
+                  <div className="col-span-2 text-right tabular-nums text-[13px] text-muted-foreground">
+                    {Math.round(parseFloat(r.accuracy as string))}%
+                  </div>
                   <div className="col-span-2 text-right text-[12px] text-muted-foreground">
-                    {new Date(r.date).toLocaleDateString(undefined, { month: "short", day: "2-digit" })}
+                    {new Date(r.createdAt).toLocaleDateString(undefined, { month: "short", day: "2-digit" })}
                   </div>
                 </div>
               );
