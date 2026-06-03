@@ -14,6 +14,7 @@ import Profile from "./pages/Profile.tsx";
 import Auth from "./pages/Auth.tsx";
 import Arcade from "./pages/Arcade.tsx";
 import NotFound from "./pages/NotFound.tsx";
+import VerifyEmail from "./pages/VerifyEmail.tsx"
 
 const queryClient = new QueryClient();
 
@@ -32,6 +33,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/teach" element={<Teach />} />
             <Route path="/practice" element={<ProtectedRoute><Practice /></ProtectedRoute>} />
             <Route path="/arcade" element={<ProtectedRoute><Arcade /></ProtectedRoute>} />

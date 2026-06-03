@@ -25,15 +25,29 @@ type AuthCtx = {
   user: User | null;
   session: Session | null;
   loading: boolean;
+
   refresh: () => Promise<void>;
 
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signIn: (
+    email: string,
+    password: string
+  ) => Promise<
+    | { error: Error | null }
+    | { error: Error | null; requiresOtp: true; userId: number }
+  >;
+
   signUp: (
     email: string,
     password: string,
     name: string,
-    username: string,
+    username: string
   ) => Promise<{ data?: any; error: Error | null }>;
+
+  verifyOtp: (
+    userId: number,
+    otp: string
+  ) => Promise<{ error: Error | null }>;
+
   signOut: () => Promise<void>;
 };
 
@@ -42,9 +56,18 @@ const Ctx = createContext<AuthCtx | undefined>(undefined);
 async function hydrate(): Promise<{ user: User; token: string } | null> {
   const token = localStorage.getItem("auth_token");
   if (!token) return null;
+
   try {
     const me = await profileService.me();
-    return { token, user: { id: me.id, email: me.email ?? "", username: me.username } };
+
+    return {
+      token,
+      user: {
+        id: me.id,
+        email: me.email ?? "",
+        username: me.username,
+      },
+    };
   } catch {
     localStorage.removeItem("auth_token");
     return null;
@@ -69,38 +92,115 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     })();
   }, []);
 
-  const signIn: AuthCtx["signIn"] = async (email, password) => {
+  // STEP 1 LOGIN (OTP OR TOKEN)
+  const signIn = async (email: string, password: string) => {
     try {
       const res = await authService.signIn(email, password);
-      const token: string | undefined =
-        res?.accessToken ?? res?.token ?? res?.data?.accessToken;
-      if (token) localStorage.setItem("auth_token", token);
-      await refresh();
+      const data = res?.data;
+
+      // 🔥 OTP FLOW
+      if (data?.requiresOtp) {
+        return {
+          error: null,
+          requiresOtp: true,
+          userId: data.userId,
+        };
+      }
+
+      // 🔥 DIRECT LOGIN (if backend changes later)
+      const token =
+        data?.accessToken ??
+        res?.accessToken ??
+        res?.token;
+
+      if (token) {
+        localStorage.setItem("auth_token", token);
+        await refresh();
+      }
+
       return { error: null };
     } catch (err: any) {
-      const msg = err?.response?.data?.message ?? err?.message ?? "Sign in failed";
+      const msg =
+        err?.response?.data?.message ??
+        err?.message ??
+        "Sign in failed";
+
       return { error: new Error(msg) };
     }
   };
 
-  const signUp: AuthCtx["signUp"] = async (email, password, name, username) => {
+  const verifyOtp = async (userId: number, otp: string) => {
     try {
-      const res = await authService.signUp(email, password, name, username);
+      const res = await authService.verifyOtp(userId, otp);
+
+      const data = res?.data;
+
+      const token =
+        data?.accessToken ??
+        res?.accessToken;
+
+      if (token) {
+        localStorage.setItem("auth_token", token);
+      }
+
+      await refresh();
+
+      return { error: null };
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.message ??
+        err?.message ??
+        "OTP failed";
+
+      return { error: new Error(msg) };
+    }
+  };
+
+  const signUp = async (
+    email: string,
+    password: string,
+    name: string,
+    username: string
+  ) => {
+    try {
+      const res = await authService.signUp(
+        email,
+        password,
+        name,
+        username
+      );
+
       return { data: res, error: null };
     } catch (err: any) {
-      const msg = err?.response?.data?.message ?? err?.message ?? "Sign up failed";
+      const msg =
+        err?.response?.data?.message ??
+        err?.message ??
+        "Sign up failed";
+
       return { error: new Error(msg) };
     }
   };
 
   const signOut = async () => {
     await authService.signOut();
+    localStorage.removeItem("auth_token");
     setSession(null);
     setUser(null);
   };
 
   return (
-    <Ctx.Provider value={{ user, session, loading, refresh, signIn, signUp, signOut }}>
+    <Ctx.Provider
+      value={{
+        user,
+        session,
+        loading,
+        refresh,
+        signIn,
+        signUp,
+        verifyOtp,
+        signOut,
+      }}
+    >
       {children}
     </Ctx.Provider>
   );

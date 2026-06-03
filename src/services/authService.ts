@@ -69,8 +69,27 @@ export const authService = {
     return res.data;
   },
 
-  verifyOtp: async (userId: number, otp: string) => {
-    const res = await api.post("/auth/verify-otp", { userId, otp });
-    return res.data;
-  }
+ verifyOtp: async (userId: number, otp: string) => {
+
+  console.log("OTP REQUEST", {
+    userId,
+    type: typeof userId,
+    otp,
+    otpLength: otp?.length,
+    trimmed: otp?.trim(),
+  });
+
+  const res = await api.post("/auth/verify-otp", {
+    userId: Number(userId),
+    otp: otp.trim(),
+  });
+
+  return res.data;
+},
+ verifyEmail: async (userId: string, token: string) => {
+  const res = await api.get(
+    `/auth/verify-email?token=${token}&userId=${userId}`
+  );
+  return res.data;
+},
 };

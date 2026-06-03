@@ -1,9 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { passagesService, type Passage } from "@/services/passages.service";
+import { passagesService } from "@/services/passages.service";
 import { sessionsService, type CreateSessionInput } from "@/services/sessions.service";
 import { leaderboardService, type LeaderboardScope } from "@/services/leaderboard.service";
 import { lessonsService } from "@/services/lessons.service";
 import { profileService, type Profile } from "@/services/profile.service";
+
+// Define the exact structural interface returned by your backend API
+export interface Lesson {
+  id: number;
+  title: string;
+  description: string;
+  content_text: string;
+  order_index: number;
+  keys?: string[]; // Optional fallback matching component state
+}
 
 export const useRandomPassage = (mode?: "quote" | "custom" | "lesson") =>
   useQuery({
@@ -35,8 +45,19 @@ export const useLeaderboard = (scope: LeaderboardScope) =>
     queryFn: () => leaderboardService.list(scope),
   });
 
+// Safely unwraps the payload whether it returns a flat array or the enveloped JSON object
 export const useLessons = () =>
-  useQuery({ queryKey: ["lessons"], queryFn: () => lessonsService.list() });
+  useQuery<any, Error, Lesson[]>({ 
+    queryKey: ["lessons"], 
+    queryFn: () => lessonsService.list(),
+    select: (rawResponse) => {
+      if (Array.isArray(rawResponse)) return rawResponse;
+      if (rawResponse && typeof rawResponse === "object" && "data" in rawResponse) {
+        return rawResponse.data;
+      }
+      return [];
+    }
+  });
 
 export const useProfile = () =>
   useQuery({ queryKey: ["profile"], queryFn: () => profileService.me() });
@@ -46,6 +67,6 @@ export const useUpdateProfile = () => {
   return useMutation({
     mutationFn: (patch: Partial<Pick<Profile, "username" | "name">>) =>
       profileService.update(patch),
-    onSuccess: (data) => qc.setQueryData(["profile"], data),
+    onSuccess: (data) => qc.setQueryData(["profile"], data), 
   });
 };

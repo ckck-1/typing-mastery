@@ -22,7 +22,7 @@ const signUpSchema = signInSchema.extend({
 });
 
 export default function Auth() {
-  const { user, loading, signIn, signUp } = useAuth();
+  const { user, loading, signIn, signUp, verifyOtp } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from ?? "/dashboard";
@@ -41,60 +41,125 @@ export default function Auth() {
   if (!loading && user) return <Navigate to={from} replace />;
 
   const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    try {
-      if (otpMode && userId) {
-        try {
-          await authService.verifyOtp(userId, otp.trim());
-          toast({ title: "Email verified", description: "You can now sign in." });
-          setOtpMode(false);
-          setMode("signin");
-          setOtp("");
-        } catch (err: any) {
-          toast({ title: "Verification failed", description: err.response?.data?.message || "Invalid OTP" });
-        }
+  e.preventDefault();
+  setBusy(true);
+
+  try {
+    // STEP 1: OTP verification mode
+    if (otpMode && userId) {
+      const { error } = await verifyOtp(userId, otp.trim());
+
+      if (error) {
+        toast({
+          title: "Verification failed",
+          description: error.message,
+        });
         return;
       }
 
-      if (mode === "signin") {
-        const parsed = signInSchema.safeParse({ email, password });
-        if (!parsed.success) {
-          toast({ title: "Check your details", description: parsed.error.errors[0].message });
-          return;
-        }
-        const { error } = await signIn(parsed.data.email, parsed.data.password);
-        if (error) return toast({ title: "Sign in failed", description: error.message });
-        toast({ title: "Welcome back" });
-        navigate(from, { replace: true });
-      } else {
-        const parsed = signUpSchema.safeParse({ email, password, name, username });
-        if (!parsed.success) {
-          toast({ title: "Check your details", description: parsed.error.errors[0].message });
-          return;
-        }
-        try {
-          const { data, error } = await signUp(parsed.data.email, parsed.data.password, parsed.data.name, parsed.data.username.toLowerCase());
-          if (error) throw error;
+      toast({
+        title: "Email verified",
+        description: "You're now logged in",
+      });
 
-          // Backend may return { userId } or { data: { userId } }
-          const uid = data?.data?.userId ?? data?.userId ?? data?.user?.id;
-          if (uid != null) {
-            setUserId(Number(uid));
-            setOtpMode(true);
-            toast({ title: "OTP sent", description: "Check your email for the verification code." });
-          } else {
-            toast({ title: "Account created", description: "You can now sign in." });
-            setMode("signin");
-          }
-        } catch (err: any) {
-          toast({ title: "Sign up failed", description: err.response?.data?.message || err.message || "Could not create account" });
-        }
-      }
-    } finally {
-      setBusy(false);
+      setOtpMode(false);
+      navigate("/dashboard");
+      return;
     }
-  };
+
+    // STEP 2: LOGIN
+    if (mode === "signin") {
+      const parsed = signInSchema.safeParse({ email, password });
+
+      if (!parsed.success) {
+        toast({
+          title: "Check your details",
+          description: parsed.error.errors[0].message,
+        });
+        return;
+      }
+
+      const result = await signIn(
+        parsed.data.email,
+        parsed.data.password
+      );
+
+      if (result.error) {
+        toast({
+          title: "Sign in failed",
+          description: result.error.message,
+        });
+        return;
+      }
+
+      // 🔥 OTP REQUIRED FLOW
+      if ("requiresOtp" in result && result.requiresOtp) {
+        setUserId(result.userId);
+        setOtpMode(true);
+
+        toast({
+          title: "OTP sent",
+          description: "Check your email",
+        });
+
+        return;
+      }
+
+      navigate("/dashboard");
+      return;
+    }
+
+    // STEP 3: SIGNUP
+    const parsed = signUpSchema.safeParse({
+      email,
+      password,
+      name,
+      username,
+    });
+
+    if (!parsed.success) {
+      toast({
+        title: "Check your details",
+        description: parsed.error.errors[0].message,
+      });
+      return;
+    }
+
+    const { data, error } = await signUp(
+      parsed.data.email,
+      parsed.data.password,
+      parsed.data.name,
+      parsed.data.username.toLowerCase()
+    );
+
+    if (error) {
+      toast({
+        title: "Sign up failed",
+        description: error.message,
+      });
+      return;
+    }
+
+    const uid =
+      data?.data?.userId ??
+      data?.userId ??
+      data?.user?.id;
+
+    if (uid) {
+      setUserId(Number(uid));
+      setOtpMode(true);
+
+      toast({
+        title: "OTP sent",
+        description: "Verify your email",
+      });
+    } else {
+      setMode("signin");
+    }
+  } finally {
+    setBusy(false);
+  }
+};
 
   return (
     <Layout>
