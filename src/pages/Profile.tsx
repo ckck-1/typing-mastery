@@ -10,7 +10,6 @@ import { profileService, type Profile } from "@/services/profile.service";
 export default function ProfilePage() {
   const { user, signOut } = useAuth();
   
-  // Use our real hook to fetch the complete user performance log arrays
   const { data: historyData, isLoading: historyLoading } = useTestHistory();
 
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -28,18 +27,24 @@ export default function ProfilePage() {
   const [results, setResults] = useState<FriendProfile[]>([]);
   const [searching, setSearching] = useState(false);
 
-  const friendIds = useMemo(() => new Set(friends.map((f) => f.id)), [friends]);
+  const safeFriends = useMemo(() => (Array.isArray(friends) ? friends : []), [friends]);
+  const safePending = useMemo(() => (Array.isArray(pending) ? pending : []), [pending]);
+  const safeResults = useMemo(() => (Array.isArray(results) ? results : []), [results]);
 
-  // Compute stats on the fly from the test history data log array
+  const friendIds = useMemo(() => {
+    return new Set(safeFriends.map((f) => f.id));
+  }, [safeFriends]);
+
   const stats = useMemo(() => {
     const list = Array.isArray(historyData) ? historyData : [];
     if (list.length === 0) {
-      return { bestWpm: "—", avgWpm: "—", avgAccuracy: "—", count: 0 };
+      // Kept values consistently numerical to keep TypeScript types clean
+      return { bestWpm: 0, avgWpm: 0, avgAccuracy: 0, count: 0 };
     }
 
     const count = list.length;
-    const wpms = list.map((item) => Math.round(parseFloat(item.wpm)));
-    const accuracies = list.map((item) => parseFloat(item.accuracy));
+    const wpms = list.map((item) => Math.round(parseFloat(item.wpm as string) || 0));
+    const accuracies = list.map((item) => parseFloat(item.accuracy as string) || 0);
 
     const bestWpm = Math.max(...wpms);
     const avgWpm = Math.round(wpms.reduce((a, b) => a + b, 0) / count);
@@ -55,13 +60,15 @@ export default function ProfilePage() {
     try {
       const me = await profileService.me();
       setProfile(me);
-      setUsername(me.username);
+      setUsername(me?.username || "");
+
       const [fs, ps] = await Promise.all([
         friendsService.listFriends().catch(() => []),
         friendsService.listPending().catch(() => []),
       ]);
-      setFriends(fs);
-      setPending(ps);
+
+      setFriends(Array.isArray(fs) ? fs : []);
+      setPending(Array.isArray(ps) ? ps : []);
     } catch (e: any) {
       setError(e.message ?? "Failed to load profile");
     } finally {
@@ -69,23 +76,31 @@ export default function ProfilePage() {
     }
   };
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [user?.id]);
+  useEffect(() => { 
+    load(); 
+    /* eslint-disable-next-line */ 
+  }, [user?.id]);
 
-  useEffect(() => {
-    if (!search.trim()) { setResults([]); return; }
-    setSearching(true);
-    const t = setTimeout(async () => {
-      try {
-        const u = await friendsService.search(search);
-        setResults(u.filter((x) => x.id !== user?.id));
-      } catch (e: any) {
-        toast({ title: "Search failed", description: e.message });
-      } finally { setSearching(false); }
-    }, 300);
-    return () => clearTimeout(t);
-  }, [search, user?.id]);
+ useEffect(() => {
+  if (!search.trim()) { setResults([]); return; }
+  setSearching(true);
+  const t = setTimeout(async () => {
+    try {
+      const u = await friendsService.search(search);
+      const searchArray = Array.isArray(u) ? u : [];
+      
+      // Convert user?.id to a number safely for the comparison
+      setResults(searchArray.filter((x) => x.id !== (user?.id ? Number(user.id) : null)));
+      
+    } catch (e: any) {
+      toast({ title: "Search failed", description: e.message });
+    } finally { setSearching(false); }
+  }, 300);
+  return () => clearTimeout(t);
+}, [search, user?.id]);
 
   const save = async () => {
+    if (!username.trim()) return;
     setSaving(true);
     try {
       const updated = await profileService.update({ username: username.toLowerCase() });
@@ -109,8 +124,8 @@ export default function ProfilePage() {
   const acceptRequest = async (req: PendingRequest) => {
     try {
       await friendsService.accept(req.requestId);
-      setPending((p) => p.filter((r) => r.requestId !== req.requestId));
-      setFriends((prev) => [...prev, { id: req.id, username: req.username, name: req.name }]);
+      setPending((p) => safePending.filter((r) => r.requestId !== req.requestId));
+      setFriends((prev) => [...safeFriends, { id: req.id, username: req.username, name: req.name }]);
       toast({ title: `You and @${req.username} are now connected` });
     } catch (e: any) {
       toast({ title: "Could not accept", description: e.message });
@@ -120,7 +135,7 @@ export default function ProfilePage() {
   const declineRequest = async (req: PendingRequest) => {
     try {
       await friendsService.decline(req.requestId);
-      setPending((p) => p.filter((r) => r.requestId !== req.requestId));
+      setPending((p) => safePending.filter((r) => r.requestId !== req.requestId));
       toast({ title: `Declined @${req.username}` });
     } catch (e: any) {
       toast({ title: "Could not decline", description: e.message });
@@ -130,7 +145,7 @@ export default function ProfilePage() {
   const removeFriend = async (friend: FriendProfile) => {
     try {
       await friendsService.remove(friend.id);
-      setFriends((prev) => prev.filter((f) => f.id !== friend.id));
+      setFriends((prev) => safeFriends.filter((f) => f.id !== friend.id));
       toast({ title: `Removed @${friend.username}` });
     } catch (e: any) {
       toast({ title: "Could not remove friend", description: e.message });
@@ -138,17 +153,20 @@ export default function ProfilePage() {
   };
 
   if (error) return <Layout><div className="container py-12 max-w-2xl"><ErrorNote message={error} onRetry={load} /></div></Layout>;
-  // Combine profile loading states with the async test statistics loading status safely
   if (loading || historyLoading || !profile) return <Layout><div className="container py-16 max-w-2xl"><SkeletonBlock className="h-80 w-full" /></div></Layout>;
 
-  const displayName = profile.username;
+  const displayName = profile.username || "User";
+  const rawDateString = profile.created_at || profile.joinedAt || new Date().toISOString();
+  const joinedDate = new Date(rawDateString);
+
+  // Fallbacks applied directly here in the data cell layout safely
   const cells = [
-    { label: "Best WPM", value: stats.bestWpm },
-    { label: "Average WPM", value: stats.avgWpm },
-    { label: "Accuracy", value: stats.avgAccuracy !== "—" ? `${stats.avgAccuracy}%` : "—" },
+    { label: "Best WPM", value: stats.count > 0 ? stats.bestWpm : "—" },
+    { label: "Average WPM", value: stats.count > 0 ? stats.avgWpm : "—" },
+    { label: "Accuracy", value: stats.count > 0 ? `${stats.avgAccuracy}%` : "—" },
     { label: "Tests", value: stats.count },
-    { label: "Friends", value: friends.length },
-    { label: "Member", value: new Date(profile.joinedAt).getFullYear() },
+    { label: "Friends", value: safeFriends.length },
+    { label: "Member", value: isNaN(joinedDate.getTime()) ? "—" : joinedDate.getFullYear() },
   ];
 
   return (
@@ -174,7 +192,7 @@ export default function ProfilePage() {
               <h1 className="font-serif text-2xl tracking-tight">@{profile.username}</h1>
               {profile.email && <p className="text-[12px] text-muted-foreground mt-1">{profile.email}</p>}
               <p className="text-[12px] uppercase tracking-[0.18em] text-muted-foreground mt-2">
-                since {new Date(profile.joinedAt).toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+                since {!isNaN(joinedDate.getTime()) ? joinedDate.toLocaleDateString(undefined, { month: "long", year: "numeric" }) : "—"}
               </p>
             </>
           )}
@@ -214,7 +232,7 @@ export default function ProfilePage() {
         <section className="mt-10 bg-card hairline border rounded-md p-8 shadow-sheet">
           <div className="flex items-baseline justify-between">
             <h2 className="font-serif text-xl tracking-tight">Friends</h2>
-            <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">{friends.length} connected</span>
+            <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">{safeFriends.length} connected</span>
           </div>
 
           <div className="mt-6">
@@ -226,9 +244,9 @@ export default function ProfilePage() {
             />
             {searching && <div className="mt-3"><LoadingLine label="Searching" /></div>}
 
-            {results.length > 0 && (
+            {safeResults.length > 0 && (
               <ul className="mt-4 divide-y divide-border/70 hairline border rounded-md overflow-hidden">
-                {results.map((r) => (
+                {safeResults.map((r) => (
                   <li key={r.id} className="flex items-center justify-between px-4 py-3 bg-card">
                     <div>
                       <div className="text-[13px] text-foreground">@{r.username}</div>
@@ -245,18 +263,18 @@ export default function ProfilePage() {
                 ))}
               </ul>
             )}
-            {search && !searching && results.length === 0 && (
+            {search && !searching && safeResults.length === 0 && (
               <p className="mt-4 text-[12px] text-muted-foreground">No users matching "{search}".</p>
             )}
           </div>
 
-          {pending.length > 0 && (
+          {safePending.length > 0 && (
             <div className="mt-8">
               <h3 className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground mb-3">
-                Friend requests · {pending.length}
+                Friend requests · {safePending.length}
               </h3>
               <ul className="divide-y divide-border/70 hairline border rounded-md overflow-hidden">
-                {pending.map((r) => (
+                {safePending.map((r) => (
                   <li key={r.requestId} className="flex items-center justify-between px-4 py-3 bg-card">
                     <div>
                       <div className="text-[13px] text-foreground">@{r.username}</div>
@@ -278,11 +296,11 @@ export default function ProfilePage() {
 
           <div className="mt-8">
             <h3 className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground mb-3">Your friends</h3>
-            {friends.length === 0 ? (
+            {safeFriends.length === 0 ? (
               <p className="text-[12px] text-muted-foreground">No friends yet — search above to connect.</p>
             ) : (
               <ul className="divide-y divide-border/70 hairline border rounded-md overflow-hidden">
-                {friends.map((f) => (
+                {safeFriends.map((f) => (
                   <li key={f.id} className="flex items-center justify-between px-4 py-3 bg-card">
                     <div>
                       <div className="text-[13px] text-foreground">@{f.username}</div>

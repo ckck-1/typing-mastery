@@ -29,6 +29,12 @@ export interface TestResult {
   passageId: number;
   createdAt: string;
 }
+export interface TestHistoryItem {
+  id: string | number;
+  wpm: string | number;
+  accuracy: string | number;
+  createdAt: string;
+}
 
 export interface LeaderboardEntry {
   id: number;
@@ -142,4 +148,24 @@ export const useLeaderboard = (scope: LeaderboardScope = "worldwide") =>
         // Ensure scores are sorted descending
         .sort((a, b) => parseFloat(b.wpm as string) - parseFloat(a.wpm as string));
     },
+    
   });
+// export const useTestHistory = () => {
+//   return useQuery({
+//     queryKey: ["testHistory"],
+//     queryFn: async () => {
+//       try {
+//         const res = await api.get("/tests/history");
+//         return res.data?.data || res.data || [];
+//       } catch (err: any) {
+//         // Catch the 404 error cleanly so the UI doesn't crash or hang forever
+//         if (err.response?.status === 404) {
+//           console.warn("Backend /tests/history route missing; falling back to empty array.");
+//           return [];
+//         }
+//         throw err;
+//       }
+//     },
+//     initialData: [], // Provides immediate type safety for stats calculations
+//   });
+// };

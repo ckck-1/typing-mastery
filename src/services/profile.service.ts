@@ -1,56 +1,115 @@
 import api from "@/lib/api";
+import { FriendProfile } from "./friends.service";
 
-export type Profile = {
-  id: string;
-  name: string;
+export interface UserSettings {
+  user_id: number;
+  email_notifications_enabled: boolean;
+}
+
+export interface UserProfileData {
+  id: number;
+  email: string;
   username: string;
-  joinedAt: string;
-  email?: string;
-  avatarUrl?: string;
-};
+  avatar_url: string | null;
+  is_verified: boolean;
+  is_admin: boolean;
+  created_at: string;
+  settings?: UserSettings;
+}
 
-function normalize(raw: any): Profile {
-  return {
-    id: String(raw.id ?? raw.userId ?? ""),
-    name: raw.name ?? raw.fullName ?? raw.username ?? "",
-    username: raw.username ?? "",
-    joinedAt: raw.joinedAt ?? raw.createdAt ?? raw.created_at ?? new Date().toISOString(),
-    email: raw.email,
-    avatarUrl: raw.avatarUrl ?? raw.avatar_url,
-  };
+export interface ProfileResponse {
+  success: boolean;
+  data: UserProfileData;
+}
+
+export interface UpdateProfileInput {
+  username?: string;
+  emailNotificationsEnabled?: boolean;
+}
+
+export interface Profile {
+  id: number;
+  email: string;
+  username: string;
+  avatar_url: string | null;
+  is_verified: boolean;
+  is_admin: boolean;
+  created_at: string;
+  joinedAt: string; // Backward compatibility mapper fallback
+  settings?: UserSettings;
 }
 
 export const profileService = {
-  // GET /profile/me
+  /**
+   * GET /profile/me
+   * Fetches the current logged-in user's profile configuration
+   */
   async me(): Promise<Profile> {
-    const res = await api.get("/profile/me");
-    return normalize(res.data);
+    const res = await api.get<ProfileResponse>("/profile/me");
+    
+    // Explicitly unwrap and fallback to an empty or partial record typed as any if needed,
+    // or pull directly from data to guarantee the UserProfileData type structure.
+    const profileData = (res.data?.data || res.data) as any;
+    
+    return {
+      ...profileData,
+      // Fallback fallback consistency for rendering logic
+      created_at: profileData?.created_at || new Date().toISOString(),
+      joinedAt: profileData?.created_at || new Date().toISOString()
+    };
   },
 
-  // PUT /profile/me
-  async update(patch: Partial<Pick<Profile, "name" | "username">>): Promise<Profile> {
-    const res = await api.put("/profile/me", patch);
-    return normalize(res.data?.profile ?? res.data);
+  /**
+   * PUT /profile/me
+   * Updates username or notification preferences
+   */
+  async update(input: UpdateProfileInput): Promise<Profile> {
+    const res = await api.put<any>("/profile/me", input);
+    
+    // Normalizes variation inside update responses (user vs data containers) safely
+    const rawData = res.data?.data || res.data;
+    const userCore = rawData?.user || rawData;
+    const settingsCore = rawData?.settings;
+
+    return {
+      ...userCore,
+      settings: settingsCore,
+      created_at: userCore?.created_at || new Date().toISOString(),
+      joinedAt: userCore?.created_at || new Date().toISOString()
+    };
   },
 
-  // GET /profile/{userId}
-  async getPublic(userId: string): Promise<Profile> {
-    const res = await api.get(`/profile/${userId}`);
-    return normalize(res.data);
-  },
+  /**
+   * POST /profile/avatar
+   * Uploads raw binary imagery payloads using FormData
+   */
+  async uploadAvatar(file: File): Promise<{ success: boolean; avatarUrl: string }> {
+    const formData = new FormData();
+    formData.append("avatar", file);
 
-  // POST /profile/avatar (multipart)
-  async uploadAvatar(file: File): Promise<Profile> {
-    const form = new FormData();
-    form.append("avatar", file);
-    const res = await api.post("/profile/avatar", form, {
-      headers: { "Content-Type": "multipart/form-data" },
+    const res = await api.post("/profile/avatar", formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
     });
-    return normalize(res.data?.profile ?? res.data);
+    return res.data?.data || res.data;
   },
 
-  // DELETE /profile/me
-  async deleteAccount() {
-    await api.delete("/profile/me");
+  /**
+   * DELETE /profile/me
+   * Completely terminates and cleans up user account records
+   */
+  async deleteAccount(): Promise<{ success: boolean }> {
+    const res = await api.delete("/profile/me");
+    return res.data;
   },
+
+  /**
+   * GET /profile/{userId}
+   * Returns generic profile summaries for any system user
+   */
+  async getPublicProfile(userId: number | string): Promise<FriendProfile> {
+    const res = await api.get(`/profile/${userId}`);
+    return res.data?.data || res.data;
+  }
 };
